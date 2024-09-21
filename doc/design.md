@@ -1,5 +1,20 @@
-# tradebotv3
-The most exciting version, with real time operations
+The project is object-oriented. 
+frequency and things like that can be object parameters 
+
+class DataSettings:
+    def -_-init__(self, frequency='1d', look_back_period=14):
+        self.frequency = frequency
+        self.look_back_period = look_back_period
+
+
+or use
+def calculate_returns(data, frequency='1d', look_back_period=14, **kwargs):
+    # kwargs can accept additional optional parameters
+    volatility = kwargs.get('volatility', None)  # Optional parameter
+    pass
+
+
+
 
 Structure:
 tradebot_v3/
