@@ -1,0 +1,24 @@
+{
+    "check_params": {
+        "missing_check": true,
+        "duplicate_check": true,
+        "outlier_check": true,
+        "outlier_threshold": 20,
+        "datatype_check": true,
+        "logical_check": true,
+        "zero_variance_check": true
+    },
+    "expected_types": {
+            "open_time": "datetime64[ns, UTC]",
+            "open": "float64",
+            "high": "float64",
+            "low": "float64",
+            "close": "float64",
+            "volume": "float64",
+            "close_time": "datetime64[ns, UTC]",
+            "quote_asset_volume": "float64",
+            "number_of_trades": "int",
+            "taker_buy_base_asset_volume": "float64",
+            "taker_buy_quote_asset_volume": "float64"
+    }
+}

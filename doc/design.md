@@ -1,13 +1,15 @@
 The project is object-oriented. 
 frequency and things like that can be object parameters 
+Most of the time, the dataframe index are timestamps
+Execpt before saving datas
 
 class DataSettings:
-    def -_-init__(self, frequency='1d', look_back_period=14):
+    def __init__(self, frequency='1d', look_back_period=14):
         self.frequency = frequency
         self.look_back_period = look_back_period
 
 
-or use
+or use Default Parameters and Keyword Arguments
 def calculate_returns(data, frequency='1d', look_back_period=14, **kwargs):
     # kwargs can accept additional optional parameters
     volatility = kwargs.get('volatility', None)  # Optional parameter
