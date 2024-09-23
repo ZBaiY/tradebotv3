@@ -1,0 +1,4 @@
+{
+    "base_url": "https://api.binance.com",
+    "endpoint": "/api/v3/klines"
+}

@@ -1,7 +1,7 @@
 """
 Base class for data handling. This class should be inherited by other classes that will handle data from different sources.
 """
-
+import json
 import pandas as pd
 import requests
 import time
@@ -11,12 +11,15 @@ from datetime import datetime as dt
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 class DataHandler:
-    def __init__(self, source, frequency):
+    def __init__(self, source_file, frequency = '1h'): # frequency will be used for the loading of the data
         """
         Base class for data handling (historical and real-time).
         :param source: Dictionary containing base_url and other API-related parameters.
         :param frequency: Data frequency (e.g., '1d', '1h', etc.)
         """
+        with open(source_file, 'r') as file:
+            source = json.load(file)
+        
         self.base_url = source.get("base_url")
         self.endpoint = source.get("endpoint")
         self.frequency = frequency
@@ -47,7 +50,7 @@ class DataHandler:
         pass
         
 
-def rescale_data(df, scaler_type='minmax'):
+def rescale_data(df, scaler_type='standard'):
     """
     Rescale numeric columns in the DataFrame using the specified scaler.
     
@@ -72,7 +75,7 @@ def rescale_data(df, scaler_type='minmax'):
     return df
 
 class DataCleaner:
-    def __init__(self, df, params, **kwargs): # params, **kwargs access through the json file
+    def __init__(self, df, **kwargs): # params, **kwargs access through the json file
         """
         Base class for data cleaning.
         :param df: DataFrame containing raw data.
@@ -88,13 +91,20 @@ class DataCleaner:
             'taker_buy_quote_asset_volume', 'ignore'
         ])
         # Do the truncation at the beginning
-        truncated_df = df[self.required_labels].copy()
-        for label in self.required_labels:
-            if label not in truncated_df.columns:
-                truncated_df[label] = pd.NaT if label in ['open_time', 'close_time'] else 0 if label == 'number_of_trades' else 0.0
-        self.df = truncated_df
+        self.df = df.reindex(columns=self.required_labels, fill_value=pd.NaT if 'open_time' in self.required_labels else 0)
         self.datetime_format = kwargs.get('datetime_format', 'ms')
-        self.params = params
+        self.params = kwargs.get('params', {
+            "check_labels": True,
+            "dtype": True,
+            "resample_align": True,
+            "timezone_adjust": False,
+            "zero_variance": True,
+            "remove_outliers": True,
+            "resample_freq": "H", 
+            "outlier_threshold": 20, 
+            "adjacent_count": 7, 
+            "utc_offset": 3
+        })
     
 
     def datatype_df(self):
@@ -105,14 +115,16 @@ class DataCleaner:
         self.df.ffill(inplace=True)
         self.df.bfill(inplace=True)
 
-        # Ensure correct data types
+        # Ensure correct data types for datetime columns
         if self.datetime_format:
-            self.df['open_time'] = pd.to_datetime(self.df['open_time'], format=self.datetime_format, utc=True)
-            self.df['close_time'] = pd.to_datetime(self.df['close_time'], format=self.datetime_format, utc=True)
+            for column in ['open_time', 'close_time']:
+                if column in self.df.columns:
+                    self.df[column] = pd.to_datetime(self.df[column], format=self.datetime_format, utc=True)
         else:
-            self.df['open_time'] = pd.to_datetime(self.df['open_time'], unit='ms', errors='coerce', utc=True)
-            self.df['close_time'] = pd.to_datetime(self.df['close_time'], unit='ms', errors='coerce', utc=True)
-
+            for column in ['open_time', 'close_time']:
+                if column in self.df.columns:
+                    self.df[column] = pd.to_datetime(self.df[column], unit='ms', errors='coerce', utc=True)
+                    
         # Batch conversion of data types
         for column, dtype in {
             'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float',
@@ -133,7 +145,7 @@ class DataCleaner:
         :return: pd.DataFrame, the resampled, aligned, and truncated DataFrame
         """
         # Ensure the 'open_time' column is present and convert it to datetime
-        period = self.params.get('period', 'D')
+        period = self.params.get('resample_freq', 'D')
         if 'open_time' not in self.df.columns:
             raise KeyError("The DataFrame does not contain a 'open_time' column.")
         
@@ -329,8 +341,8 @@ class DataChecker:
         :return: dict, the summary of data types and a boolean indicating if the data types are as expected
         """
         # Default expected types
-        if expected_types is None:
-            expected_types = {
+        if self.expected_types is None:
+            self.expected_types = {
                 'open_time': 'datetime64[ns, UTC]',
                 'open': 'float64',
                 'high': 'float64',
@@ -347,8 +359,8 @@ class DataChecker:
         data_types = self.df.dtypes
         data_type_data = pd.DataFrame({'Data Types': data_types})
         # Check only the columns that are present in both the DataFrame and the expected types
-        common_columns = set(data_types.index).intersection(expected_types.keys())
-        is_clean = all(data_types[col] == expected_types[col] for col in common_columns)
+        common_columns = set(data_types.index).intersection(self.expected_types.keys())
+        is_clean = all(data_types[col] == self.expected_types[col] for col in common_columns)
         
         return data_type_data, is_clean
 

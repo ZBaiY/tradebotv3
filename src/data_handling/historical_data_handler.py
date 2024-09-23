@@ -2,25 +2,50 @@
 """
 The class of historical datahandler
 """
-from data_handler import DataHandler
+
+import sys
+import os
+# Add the src directory to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from src.data_handling.data_handler import DataHandler, DataCleaner, DataChecker, rescale_data
+import json
 import requests
 import pandas as pd
 import pytz
 from datetime import datetime as dt
 import time
+from tqdm import tqdm
 
-
-from data_handler import DataHandler
 
 class HistoricalDataHandler(DataHandler):
-    def __init__(self, source, frequency):
+    def __init__(self, source_file, frequency = '1h', cleaner_file=None, checker_file=None):
         """
-        Initializes the historical data handler with source details and frequency.
+        Initializes the historical data handler with source details, frequency, and optional JSON parameter files.
         :param source: Dictionary containing 'base_url' and 'endpoint'.
         :param frequency: Data frequency (e.g., '1d', '1h').
+        :param cleaner_param_file: Path to JSON file containing data cleaning parameters.
+        :param checker_param_file: Path to JSON file containing data check parameters.
         """
-        super().__init__(source, frequency)
+        super().__init__(source_file, frequency)
+        if cleaner_file is None:
+            cleaner_file = os.path.join(os.path.dirname(__file__), 'config/cleaner.json')
+        if checker_file is None:
+            checker_file = os.path.join(os.path.dirname(__file__), 'config/checker.json')
+        self.cleaner_params = self.load_params(cleaner_file)
+        self.checker_params = self.load_params(checker_file)
 
+
+    def load_params(self, file_path):
+        """
+        Loads parameters from a JSON file.
+        :param file_path: Path to the JSON file.
+        :return: Dictionary containing the parameters.
+        """
+        if file_path and os.path.exists(file_path):
+            with open(file_path, 'r') as file:
+                return json.load(file)
+        return {}
+    
 
     def ensure_correct_format(self, date_str):
         try:
@@ -31,6 +56,18 @@ class HistoricalDataHandler(DataHandler):
             date_obj = pd.to_datetime(date_str, utc=True)
             date_str = date_obj.strftime('%Y-%m-%d %H:%M:%S')
         return date_str
+    
+    def file_path(self, symbol, interval, start_date, end_date=None, process=False, raw=False, rescaled=False, file_type='csv'):
+        if end_date is None:
+            end_date = dt.now(pytz.UTC).strftime('%Y-%m-%d')
+        if raw:
+            return f'data/raw/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+        if rescaled:
+            return f'data/rescaled/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+        if process:
+            return f'data/processed/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+        else:
+            print("Please specify the type of data to save.")
     
     
     def fetch_data_chunk(self, symbol, interval, start_date, end_date=None, limit=500, rate_limit_delay=1):
@@ -144,10 +181,230 @@ class HistoricalDataHandler(DataHandler):
         
         return df
 
-    def clean_data(self, data):
-        # Code for cleaning historical data
-        pass
+        
+    def save_data_chunks(self, symbol, interval, start_date, end_date=None, limit=500, rate_limit_delay=1, file_type='csv'):
+        """
+        Fetches data in chunks, cleans it, performs checks, and saves it to CSV or HDF5.
+        :param symbol: Symbol (e.g., 'BTCUSDT').
+        :param interval: Data frequency (e.g., '1d', '1h').
+        :param start_date: Start date.
+        :param end_date: End date (optional).
+        :param limit: Max number of records per request.
+        :param rate_limit_delay: Delay between API requests to avoid rate limits.
+        :param file_type: File type to save the data ('csv' or 'h5').
+        """
+        current_start_date = start_date
+        first_chunk = True
+        output_file_path = self.file_path(symbol, interval, start_date, end_date, process=True, file_type=file_type)
+        end_date = end_date or dt.now(pytz.UTC).strftime('%Y-%m-%d')
+        start_dt = pd.to_datetime(start_date, utc=True)
+        end_dt = pd.to_datetime(end_date, utc=True)
 
-    def rescale_data(self, data):
-        # Optional: Code for rescaling data
-        pass
+        if interval.endswith('d'):
+            total_duration, unit, period_default = (end_dt - start_dt).days, "days", 'D'
+        elif interval.endswith('h'):
+            total_duration, unit, period_default = (end_dt - start_dt).days * 24 + (end_dt - start_dt).seconds // 3600, "hours", 'h'
+        elif interval.endswith('m'):
+            total_duration, unit, period_default = (end_dt - start_dt).days * 24 * 60 + (end_dt - start_dt).seconds // 60, "minutes", 'min'
+        elif interval.endswith('s'):
+            total_duration, unit, period_default = (end_dt - start_dt).days * 24 * 60 * 60 + (end_dt - start_dt).seconds, "seconds", 'S'
+        else:
+            raise ValueError("Unsupported interval format. Use 's', 'm', 'h', or 'd'.")
+
+        pbar = tqdm(total=total_duration, desc="Downloading data", unit=unit)
+
+        while True:
+            df_chunk = self.fetch_data_chunk(symbol, interval, current_start_date, end_date, limit, rate_limit_delay)
+            if df_chunk.empty:
+                break
+            
+            # Data cleaning using DataCleaner with loaded JSON parameters
+            data_cleaner = DataCleaner(df_chunk, **self.cleaner_params)
+            cleaned_df = data_cleaner.get_cleaned_df()
+
+            # Data checking using DataChecker with loaded JSON parameters
+            data_checker = DataChecker(cleaned_df, self.checker_params['check_params'], self.checker_params.get('expected_types'))
+            results = data_checker.perform_check()
+
+            if not results['is_clean']:
+                if file_type == 'csv':
+                    cleaned_df.to_csv(output_file_path, mode='a', header=True, index=False)
+                elif file_type == 'h5':
+                    cleaned_df.to_hdf(output_file_path, key='df', mode='w' if first_chunk else 'a', format='table', append=not first_chunk)
+                print("Data chunk is not clean, please check the results.")
+                print(results)
+                return None
+
+            # Save the cleaned chunk
+            if file_type == 'csv':
+                cleaned_df.to_csv(output_file_path, mode='w' if first_chunk else 'a', header=first_chunk, index=False)
+            elif file_type == 'h5':
+                cleaned_df.to_hdf(output_file_path, key='df', mode='w' if first_chunk else 'a', format='table', append=not first_chunk)
+            
+            first_chunk = False
+
+            pbar.update(len(cleaned_df))
+            current_start_date = (pd.to_datetime(cleaned_df['open_time'].iloc[-1], utc=True) +
+                                pd.Timedelta(**{unit: int(interval[:-1])})).strftime('%Y-%m-%d %H:%M:%S')
+
+            if pd.to_datetime(current_start_date, utc=True) >= end_dt:
+                break
+
+        pbar.close()
+        print(f"Data is clean and saved to {output_file_path}")
+        return None
+
+    def save_raw_chunks(self, symbol, interval, start_date, end_date=None, limit=500, rate_limit_delay=1, file_type = 'csv'):
+        """
+        Save raw historical data chunks without cleaning or checking.
+        :param symbol: Trading symbol (e.g., BTCUSDT).
+        :param interval: Data interval (e.g., '1d', '1h').
+        :param start_date: Start date.
+        :param end_date: End date (optional).
+        :param output_file: File path to save the raw data.
+        :param limit: Max number of records per request.
+        :param rate_limit_delay: Delay between retries to avoid API rate limits.
+        """
+        current_start_date = start_date
+        first_chunk = True
+        output_file_path = self.file_path(symbol, interval, start_date, end_date, raw=True, file_type=file_type)
+        end_date = end_date or dt.now(pytz.UTC).strftime('%Y-%m-%d')
+        start_dt, end_dt = pd.to_datetime(start_date, utc=True), pd.to_datetime(end_date, utc=True)
+
+        if interval.endswith('d'):
+            total_duration, unit, delta = (end_dt - start_dt).days, "days", pd.Timedelta(days=int(interval[:-1]))
+        elif interval.endswith('h'):
+            total_duration, unit, delta = (end_dt - start_dt).days * 24 + (end_dt - start_dt).seconds // 3600, "hours", pd.Timedelta(hours=int(interval[:-1]))
+        elif interval.endswith('m'):
+            total_duration, unit, delta = (end_dt - start_dt).days * 24 * 60 + (end_dt - start_dt).seconds // 60, "minutes", pd.Timedelta(minutes=int(interval[:-1]))
+        elif interval.endswith('s'):
+            total_duration, unit, delta = (end_dt - start_dt).days * 24 * 60 * 60 + (end_dt - start_dt).seconds, "seconds", pd.Timedelta(seconds=int(interval[:-1]))
+        else:
+            raise ValueError("Unsupported interval format. Use 's', 'm', 'h', or 'd'.")
+
+        pbar = tqdm(total=total_duration, desc="Downloading raw data", unit=unit)
+
+        while True:
+            df_chunk = self.fetch_data_chunk(symbol, interval, current_start_date, end_date, limit, rate_limit_delay)
+            if df_chunk.empty: break
+
+            # Save raw data chunk
+            if file_type == 'csv':
+                df_chunk.to_csv(output_file_path, mode='w' if first_chunk else 'a', header=first_chunk, index=False)
+            elif file_type == 'h5':
+                df_chunk.to_hdf(output_file_path, key='df', mode='w' if first_chunk else 'a', format='table', append=not first_chunk)
+            
+            first_chunk = False
+
+            pbar.update(len(df_chunk))
+            current_start_date = (pd.to_datetime(df_chunk['open_time'].iloc[-1], utc=True) + delta).strftime('%Y-%m-%d %H:%M:%S')
+            if pd.to_datetime(current_start_date, utc=True) >= end_dt:
+                break
+
+        pbar.close()
+        print(f"Raw data is saved to {output_file_path}")
+    
+    def save_rescaled_chunks(self, symbol, interval, start_date, end_date=None, scaler='minmax', limit=500, rate_limit_delay=1, file_type = 'csv'):
+        """
+        Fetches data in chunks, cleans it, resamples it, rescales it, and saves it to CSV.
+        :param symbol: Symbol (e.g., 'BTCUSDT').
+        :param interval: Data frequency (e.g., '1d', '1h').
+        :param start_date: Start date.
+        :param end_date: End date (optional).
+        :param limit: Max number of records per request.
+        :param rate_limit_delay: Delay between API requests to avoid rate limits.
+        """
+        current_start_date = start_date
+        first_chunk = True
+        output_file_path = self.file_path(symbol, interval, start_date, end_date, rescaled=True, file_type=file_type)
+        end_date = end_date or dt.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S')
+        start_dt = pd.to_datetime(start_date, utc=True)
+        end_dt = pd.to_datetime(end_date, utc=True)
+
+        # Determine the total duration and time unit
+        if interval.endswith('d'):
+            total_duration, unit, period_default = (end_dt - start_dt).days, "days", 'D'
+        elif interval.endswith('h'):
+            total_duration, unit, period_default = (end_dt - start_dt).days * 24 + (end_dt - start_dt).seconds // 3600, "hours", 'h'
+        elif interval.endswith('m'):
+            total_duration, unit, period_default = (end_dt - start_dt).days * 24 * 60 + (end_dt - start_dt).seconds // 60, "minutes", 'min'
+        elif interval.endswith('s'):
+            total_duration, unit, period_default = (end_dt - start_dt).days * 24 * 60 * 60 + (end_dt - start_dt).seconds, "seconds", 'S'
+        else:
+            raise ValueError("Unsupported interval format. Use 's', 'm', 'h', or 'd'.")
+
+        pbar = tqdm(total=total_duration, desc="Downloading and rescaling data", unit=unit)
+
+        while True:
+            df_chunk = self.fetch_data_chunk(symbol, interval, current_start_date, end_date, limit, rate_limit_delay)
+            if df_chunk.empty:
+                break
+
+            # Data cleaning using DataCleaner with loaded JSON parameters
+            data_cleaner = DataCleaner(df_chunk, **self.cleaner_params)
+            cleaned_df = data_cleaner.get_cleaned_df()
+
+            # Rescale the cleaned DataFrame
+            
+            rescaled_df = rescale_data(cleaned_df, scaler)
+
+            # Data checking using DataChecker with loaded JSON parameters, the rescaler can produce unlogical values, so only check the cleaned data
+            # data_checker = DataChecker(rescaled_df, self.checker_params['check_params'], self.checker_params.get('expected_types'))
+            # results = data_checker.perform_check()
+
+            # Save the rescaled chunk
+            if file_type == 'csv':
+                cleaned_df.to_csv(output_file_path, mode='w' if first_chunk else 'a', header=first_chunk, index=False)
+            elif file_type == 'h5':
+                cleaned_df.to_hdf(output_file_path, key='df', mode='w' if first_chunk else 'a', format='table', append=not first_chunk)
+            
+            first_chunk = False
+
+            pbar.update(len(rescaled_df))
+            current_start_date = (pd.to_datetime(rescaled_df['open_time'].iloc[-1], utc=True) +
+                                pd.Timedelta(**{unit: int(interval[:-1])})).strftime('%Y-%m-%d %H:%M:%S')
+
+            if pd.to_datetime(current_start_date, utc=True) >= end_dt:
+                break
+
+        pbar.close()
+        print(f"Rescaled data is clean and saved to {output_file_path}")
+        return None
+
+    def fetch_save_json(self, json_file):
+        """
+        Fetches data and saves it based on the configuration in the provided JSON file.
+        :param json_file: Path to the JSON file containing the fetch configuration.
+        """
+        with open(json_file, 'r') as file:
+            fetch_config = json.load(file)
+
+        limit = fetch_config.get('limit', 500)
+        rate_limit_delay = fetch_config.get('rate_limit_delay', 1)
+        file_type = fetch_config.get('file_type', 'csv')
+        scaler = fetch_config.get('scaler', 'standard')
+
+        for symbol_config in fetch_config['symbols']:
+            symbol = symbol_config['symbol']
+            for interval_config in symbol_config['intervals']:
+                interval = interval_config['interval']
+                start_date = interval_config['start_date']
+                end_date = interval_config.get('end_date')
+
+                raw = interval_config.get('raw', False)
+                rescale = interval_config.get('rescale', False)
+                clean = interval_config.get('clean', False)
+
+                if raw:
+                    # Save raw chunks without cleaning or rescaling
+                    print(f"Fetching raw data for {symbol} at interval {interval}")
+                    self.save_raw_chunks(symbol, interval, start_date, end_date, limit=limit, rate_limit_delay=rate_limit_delay, file_type=file_type)
+                if clean:
+                    # Save cleaned data chunks
+                    print(f"Fetching cleaned data for {symbol} at interval {interval}")
+                    self.save_data_chunks(symbol, interval, start_date, end_date, limit=limit, rate_limit_delay=rate_limit_delay, file_type=file_type)
+                if rescale:
+                    # Save rescaled data chunks
+                    print(f"Fetching rescaled data for {symbol} at interval {interval}")
+                    self.save_rescaled_chunks(symbol, interval, start_date, end_date, scaler = scaler, limit=limit, rate_limit_delay=rate_limit_delay, file_type=file_type)
+                

@@ -4,12 +4,12 @@ Explanation of cleaning json parameters
     "params": {
         "check_labels": true,
         "clean": true,
-        "resample_align": true,
+        "resample_align": false, # the resample function is not used for history data 
         "timezome_adjust": false,
         "zero_variance": true,
         "remove_outliers": true,
         "rescale": true,
-        "resample_freq": "H", #resemple frequency
+        "resample_freq": "h", #resemple frequency
         "outlier_threshold": 20, #outlier threshold
         "adjacent_count": 7, #for subtitude outliers, how many adjacent values to consider
         "utc_offset": 3, #UTC offset
@@ -20,7 +20,6 @@ Explanation of cleaning json parameters
     ],
     "datetime_format": "ms"
 }
-
 
 # Load JSON configuration
 with open('config.json', 'r') as file:
@@ -52,3 +51,37 @@ df_cleaner.datatype_df()
 print(data_cleaner.df)
 
 df_cleaned = df_cleaner.get_cleaned_df():
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+fetch_data.json:
+{
+  "symbol": "example_symbol",
+  "interval": "example_interval",
+  "start_date": "YYYY-MM-DD",
+  "end_date": null, (or "YYYY-MM-DD")
+  "limit": 500,
+  "rate_limit_delay": 1
+}
+
+with open('fetch_data.json', 'r') as json_file:
+        data = json.load(json_file)
+
+    # Extract global limit and rate limit delay
+    limit = data['limit']
+    rate_limit_delay = data['rate_limit_delay']
+    file_type = data['file_type']
+
+    # Iterate over the symbols and intervals
+    for symbol_data in data['symbols']:
+        symbol = symbol_data['symbol']
+        for interval_data in symbol_data['intervals']:
+            interval = interval_data['interval']
+            start_date = interval_data['start_date']
+            end_date = interval_data['end_date']
+            raw = interval_data['raw']
+            rescaled = interval_data['rescaled']
+            output_file = file_path(symbol, interval, start_date, end_date, raw=raw, rescaled=rescaled, file_type)
+            prepare_data_chunks(symbol, interval, start_date, end_date, output_file, limit=limit, rate_limit_delay=rate_limit_delay, file_type)

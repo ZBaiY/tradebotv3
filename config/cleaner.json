@@ -2,11 +2,10 @@
     "params": {
         "check_labels": true,
         "dtype": true,
-        "resample_align": true,
+        "resample_align": false,
         "timezome_adjust": false,
         "zero_variance": true,
-        "remove_outliers": true,
-        "resample_freq": "H", 
+        "remove_outliers": true, 
         "outlier_threshold": 20, 
         "adjacent_count": 7, 
         "utc_offset": 3
