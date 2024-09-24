@@ -1,4 +1,11 @@
 Explanation of cleaning json parameters
+{
+    "base_url": "https://api.binance.com",
+    "endpoint": "/api/v3/klines",
+    "frequency": "15m" ///for live data
+}
+
+
 
 {
     "params": {

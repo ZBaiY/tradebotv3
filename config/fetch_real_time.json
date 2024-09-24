@@ -1,0 +1,21 @@
+{
+    "interval": "15m",
+    "file_type": "csv",
+    "scaler": "standard",
+    "historical_path":"data/historical/for_scaler", 
+    "symbols": ["ETHUSDT", "BTCUSDT", "ADAUSDT", "SOLUSDT", "XTZUSDT"],
+    "log_setting": {
+        "path": "data/real_time",
+        "file_name1": "data_logs",
+        "file_name2": "time_logs"
+    },
+    "params": {
+        "check_labels": true,
+        "dtype": true,
+        "timezome_adjust": false,
+        "utc_offset": 3
+    },
+    "required_labels": [
+        "open_time", "open", "high", "low", "close", "volume"
+    ]
+}

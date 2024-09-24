@@ -8,10 +8,13 @@ import time
 import numpy as np
 import pytz
 from datetime import datetime as dt
+import os
+import joblib
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
+
 class DataHandler:
-    def __init__(self, source_file, frequency = '1h'): # frequency will be used for the loading of the data
+    def __init__(self, source_file): 
         """
         Base class for data handling (historical and real-time).
         :param source: Dictionary containing base_url and other API-related parameters.
@@ -22,7 +25,6 @@ class DataHandler:
         
         self.base_url = source.get("base_url")
         self.endpoint = source.get("endpoint")
-        self.frequency = frequency
 
 
     def build_url(self, additional_params=None):
@@ -37,18 +39,40 @@ class DataHandler:
         return url
     
 
-    def fetch_data(self):
-        raise NotImplementedError("This method should be overridden by subclasses")
+    def fetch_klines_with_limit(self, symbol, interval, limit):
+        """
+        Get historical klines (candlestick data) for a given symbol and interval with a specified limit.
+        It is for small data requests (e.g., 500 records).
+        """
+        url = self.build_url()
+
+        params = {
+            'symbol': symbol,
+            'interval': interval,
+            'limit': limit
+        }
+        
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        
+        data = response.json()
+        columns = ['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 
+                   'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore']
+        df = pd.DataFrame(data, columns=columns)
+        df['open_time'] = pd.to_datetime(df['open_time'], unit='ms', utc=True)
+        df['close_time'] = pd.to_datetime(df['close_time'], unit='ms', utc=True)
+        
+        return df
+
 
     def save_data(self, data, file_path):
         # Code to save data to file
         pass
     
     
-    def load_data(self, file_path):
-        # Code to load data from file
-        pass
-        
+    def load_data(self, file_path): ## If the future add h5 file, csv file, etc.
+        df = pd.read_csv(file_path)
+        return df
 
 def rescale_data(df, scaler_type='standard'):
     """
@@ -114,7 +138,7 @@ class DataCleaner:
         # Check for and handle missing values
         self.df.ffill(inplace=True)
         self.df.bfill(inplace=True)
-
+        
         # Ensure correct data types for datetime columns
         if self.datetime_format:
             for column in ['open_time', 'close_time']:
@@ -133,7 +157,8 @@ class DataCleaner:
         }.items():
             if column in self.df.columns:
                 self.df[column] = self.df[column].astype(dtype)
-
+        self.df = self.df.ffill().bfill().drop_duplicates(subset=[col for col in self.df.columns if 'time' not in col])# delete the non-trading periods
+        
         self.df.drop_duplicates(inplace=True)
 
 
@@ -466,3 +491,139 @@ class DataChecker:
             else:
                 print(result)
 
+
+
+
+class ScalerHandler:
+    def __init__(self, symbol, required_labels, scaler, history_path, scaler_save_path, update_frequency=672):
+        """
+        :param symbol: Single trading symbol (e.g., BTC, ETH)
+        :param required_labels: List of labels (features) to scale
+        :param scaler: 'minmax' or 'standard' to choose the scaling method
+        :param history_path: Path to the historical data for fitting the scaler
+        :param scaler_save_path: Path to save the fitted scaler
+        :param update_frequency: Number of data points (672 for weekly updates at 15-minute intervals)
+        """
+        self.scaler_type = scaler
+        self.history_path = history_path
+        self.scaler_save_path = scaler_save_path
+        self.symbol = symbol
+        self.required_labels = required_labels
+        self.update_frequency = update_frequency  # Update every week (672 data points)
+        self.scalers = {}
+        self.initialize_scalers()
+
+    def initialize_scalers(self):
+        """Initialize scalers for the given labels."""
+        for label in self.required_labels:
+            if 'time' not in label:
+                if self.scaler_type == 'minmax':
+                    self.scalers[label] = MinMaxScaler()
+                elif self.scaler_type == 'standard':
+                    self.scalers[label] = StandardScaler()
+    def fit_and_save_scaler(self, path = None):
+        """Fit the scalers on historical data and save them."""
+        if path is None: 
+            path_for_symbol = os.path.join(self.history_path, f"{self.symbol}.csv")
+        else:
+            path_for_symbol = path
+        if not os.path.exists(path_for_symbol):
+            print(f"No historical data found for {self.symbol}. Skipping.")
+            return
+        data = pd.read_csv(path_for_symbol)
+
+        # Use only the last `update_frequency` data points for fitting the scaler
+        if len(data) > self.update_frequency:
+            data = data[-self.update_frequency:]
+
+        for label in self.required_labels:
+            if label in data.columns:
+                if 'time' not in label:
+                    scaler = self.scalers[label]
+                    scaler.fit(data[label].values.reshape(-1, 1))
+
+                    # Save the scaler model after fitting
+                    save_path = os.path.join(self.scaler_save_path, f"{self.symbol}_{label}_{self.scaler_type}.pkl")
+                    joblib.dump(scaler, save_path)
+                    print(f"Scaler for {self.symbol} {label} saved at {save_path}")
+
+    def load_scalers(self):
+        """Load the previously saved scalers."""
+        for label in self.required_labels:
+            save_path = os.path.join(self.scaler_save_path, f"{self.symbol}_{label}_scaler.pkl")
+            if os.path.exists(save_path):
+                self.scalers[label] = joblib.load(save_path)
+                print(f"Loaded scaler for {self.symbol} {label} from {save_path}")
+            else:
+                print(f"Scaler for {self.symbol} {label} not found. You may need to fit the scaler.")
+
+    def rescale_data(self, df):
+        """Apply the fitted scalers to the new data."""
+        for label in self.required_labels:
+            if 'time' not in label:
+                if label in df.columns and label in self.scalers:
+                    scaler = self.scalers[label]
+                    df[label] = scaler.transform(df[label].values.reshape(-1, 1))
+        return df
+
+
+###### this is the new function to update the scaler with the most recent data, is not related to the previous classes.
+###### potential update to the previous classes to include this function
+###### Anyway, this function will only be called once manually, so it is not too urgent to include it in the classes
+def update_scaler_with_recent_data(symbols, required_labels, interval, scaler_type, scaler_save_base_path, recent_data_path = None, update_frequency=672):
+    """
+    Fetch the most recent data using the DataHandler, update the existing scaler, and save the updated scaler.
+    
+    :param data_handler: An instance of the DataHandler class to fetch data.
+    :param symbol: The symbol (e.g., 'BTC', 'ETH') to update the scaler for.
+    :param required_labels: List of columns to apply scaling on (e.g., ['open', 'high', 'low', 'close']).
+    :param interval: The time interval (e.g., '15m', '1h') of the data.
+    :param scaler_save_base_path: Base path where the scalers are saved, organized by symbol and interval.
+    :param recent_data_path: Path where the recent data will be fetched from.
+    :param update_frequency: Number of data points to use for fitting the scaler (default is 672 for weekly updates).
+    """
+    # Load the most recent data (either from file or by fetching from the API)
+    data_handler = DataHandler('config/source.json')
+    
+    for symbol in symbols:
+        print(f"Processing symbol: {symbol}")
+        
+        if recent_data_path is None:
+            recent_data = data_handler.fetch_klines_with_limit(symbol, interval, update_frequency)
+        else:
+            recent_data_file = os.path.join(recent_data_path, f"{symbol}_{interval}.csv")
+            if not os.path.exists(recent_data_file):
+                print(f"Recent data for {symbol} at {interval} not found. Fetching new data.")
+                recent_data = data_handler.fetch_klines_with_limit(symbol, interval, update_frequency)
+                #recent_data.to_csv(recent_data_file, index=False)
+            else:
+                recent_data = pd.read_csv(recent_data_file)
+
+        # Define the path where the scaler models for the symbol and interval are saved
+        scaler_save_path = os.path.join(scaler_save_base_path, symbol, interval)
+        
+        # Ensure the save path exists
+        os.makedirs(scaler_save_path, exist_ok=True)
+        
+        # Load the existing scaler models or initialize new scalers
+        scalers = {}
+        for label in required_labels:
+            scaler_file = os.path.join(scaler_save_path, f"{symbol}_{label}_{scaler_type}.pkl")
+            if os.path.exists(scaler_file):
+                scalers[label] = joblib.load(scaler_file)
+                print(f"Loaded existing scaler for {symbol} {label}.")
+            else:
+                # Initialize a new scaler if none exists
+                scalers[label] = MinMaxScaler() if scaler_type == 'minmax' else StandardScaler()
+                print(f"No existing scaler found for {symbol} {label}. Initializing a new scaler.")
+
+        # Fit the scaler on the most recent data (overriding the old one)
+        for label in required_labels:
+            if label in recent_data.columns:
+                scaler = scalers[label]
+                scaler.fit(recent_data[label].values.reshape(-1, 1))
+                # Save the updated scaler model (overriding the existing one)
+                joblib.dump(scaler, os.path.join(scaler_save_path, f"{symbol}_{label}_{scaler_type}.pkl"))
+                print(f"Updated and saved scaler for {symbol} {label}.")
+
+        print(f"Scalers updated for {symbol} with {interval} data.")

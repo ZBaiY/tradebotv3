@@ -12,13 +12,14 @@ import json
 import requests
 import pandas as pd
 import pytz
-from datetime import datetime as dt
+import joblib
+from datetime import datetime 
 import time
 from tqdm import tqdm
 
 
 class HistoricalDataHandler(DataHandler):
-    def __init__(self, source_file, frequency = '1h', cleaner_file=None, checker_file=None):
+    def __init__(self, source_file, cleaner_file=None, checker_file=None):
         """
         Initializes the historical data handler with source details, frequency, and optional JSON parameter files.
         :param source: Dictionary containing 'base_url' and 'endpoint'.
@@ -26,7 +27,7 @@ class HistoricalDataHandler(DataHandler):
         :param cleaner_param_file: Path to JSON file containing data cleaning parameters.
         :param checker_param_file: Path to JSON file containing data check parameters.
         """
-        super().__init__(source_file, frequency)
+        super().__init__(source_file)
         if cleaner_file is None:
             cleaner_file = os.path.join(os.path.dirname(__file__), 'config/cleaner.json')
         if checker_file is None:
@@ -50,7 +51,7 @@ class HistoricalDataHandler(DataHandler):
     def ensure_correct_format(self, date_str):
         try:
             # Try to parse the date string
-            date_obj = dt.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
         except ValueError:
             # If parsing fails, reformat the date string
             date_obj = pd.to_datetime(date_str, utc=True)
@@ -59,13 +60,13 @@ class HistoricalDataHandler(DataHandler):
     
     def file_path(self, symbol, interval, start_date, end_date=None, process=False, raw=False, rescaled=False, file_type='csv'):
         if end_date is None:
-            end_date = dt.now(pytz.UTC).strftime('%Y-%m-%d')
+            end_date = datetime.now(pytz.UTC).strftime('%Y-%m-%d')
         if raw:
-            return f'data/raw/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+            return f'data/historical/for_train/raw/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
         if rescaled:
-            return f'data/rescaled/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+            return f'data/historical/for_train/rescaled/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
         if process:
-            return f'data/processed/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+            return f'data/historical/for_train/processed/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
         else:
             print("Please specify the type of data to save.")
     
@@ -86,8 +87,8 @@ class HistoricalDataHandler(DataHandler):
         end_date = self.ensure_correct_format(end_date) if end_date else None
 
         # Convert dates to timestamps in milliseconds
-        start_time = int(dt.strptime(start_date, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.UTC).timestamp() * 1000)
-        end_time = int(dt.strptime(end_date, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.UTC).timestamp() * 1000) if end_date else None
+        start_time = int(datetime.strptime(start_date, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.UTC).timestamp() * 1000)
+        end_time = int(datetime.strptime(end_date, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.UTC).timestamp() * 1000) if end_date else None
 
         params = {
             'symbol': symbol,
@@ -125,30 +126,6 @@ class HistoricalDataHandler(DataHandler):
                 continue
     
 
-    def fetch_klines_with_limit(self, symbol, interval, limit):
-        """
-        Get historical klines (candlestick data) for a given symbol and interval with a specified limit.
-        It is for small data requests (e.g., 500 records).
-        """
-        url = self.build_url()
-
-        params = {
-            'symbol': symbol,
-            'interval': interval,
-            'limit': limit
-        }
-        
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        
-        data = response.json()
-        columns = ['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore']
-        df = pd.DataFrame(data, columns=columns)
-        df['open_time'] = pd.to_datetime(df['open_time'], unit='ms', utc=True)
-        df['close_time'] = pd.to_datetime(df['close_time'], unit='ms', utc=True)
-        
-        return df
-
     def fetch_historical_small(self, symbol, interval, start_date, end_date=None):
         """
         Get historical klines (candlestick data) for a given symbol and interval.
@@ -160,8 +137,8 @@ class HistoricalDataHandler(DataHandler):
         end_date = self.ensure_correct_format(end_date) if end_date else None
         url = self.build_url()
 
-        start_time = int(dt.strptime(start_date, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.UTC).timestamp() * 1000)
-        end_time = int(dt.strptime(end_date, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.UTC).timestamp() * 1000) if end_date else None
+        start_time = int(datetime.strptime(start_date, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.UTC).timestamp() * 1000)
+        end_time = int(datetime.strptime(end_date, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.UTC).timestamp() * 1000) if end_date else None
         
         params = {
             'symbol': symbol,
@@ -196,20 +173,32 @@ class HistoricalDataHandler(DataHandler):
         current_start_date = start_date
         first_chunk = True
         output_file_path = self.file_path(symbol, interval, start_date, end_date, process=True, file_type=file_type)
-        end_date = end_date or dt.now(pytz.UTC).strftime('%Y-%m-%d')
+        end_date = end_date or datetime.now(pytz.UTC).strftime('%Y-%m-%d')
         start_dt = pd.to_datetime(start_date, utc=True)
         end_dt = pd.to_datetime(end_date, utc=True)
+        interval_value = int(''.join(filter(str.isdigit, interval)))
+        interval_unit = ''.join(filter(str.isalpha, interval))
 
-        if interval.endswith('d'):
-            total_duration, unit, period_default = (end_dt - start_dt).days, "days", 'D'
-        elif interval.endswith('h'):
-            total_duration, unit, period_default = (end_dt - start_dt).days * 24 + (end_dt - start_dt).seconds // 3600, "hours", 'h'
-        elif interval.endswith('m'):
-            total_duration, unit, period_default = (end_dt - start_dt).days * 24 * 60 + (end_dt - start_dt).seconds // 60, "minutes", 'min'
-        elif interval.endswith('s'):
-            total_duration, unit, period_default = (end_dt - start_dt).days * 24 * 60 * 60 + (end_dt - start_dt).seconds, "seconds", 'S'
+        # For tqdm progress bar
+        if interval_unit == 'd':
+            total_duration = ((end_dt - start_dt).days)*interval_value
+            unit = "days"
+            period_default = f'{interval_value}D'
+        elif interval_unit == 'h':
+            total_duration = ((end_dt - start_dt).days * 24 + (end_dt - start_dt).seconds // 3600)//interval_value
+            unit = "hours"
+            period_default = f'{interval_value}h'
+        elif interval_unit == 'm':
+            total_duration = ((end_dt - start_dt).days * 24 * 60 + (end_dt - start_dt).seconds // 60)//interval_value
+            unit = "minutes"
+            period_default = f'{interval_value}min'
+        elif interval_unit == 's':
+            total_duration = ((end_dt - start_dt).days * 24 * 60 * 60 + (end_dt - start_dt).seconds)//interval_value
+            unit = "seconds"
+            period_default = f'{interval_value}S'
         else:
             raise ValueError("Unsupported interval format. Use 's', 'm', 'h', or 'd'.")
+
 
         pbar = tqdm(total=total_duration, desc="Downloading data", unit=unit)
 
@@ -244,9 +233,7 @@ class HistoricalDataHandler(DataHandler):
             first_chunk = False
 
             pbar.update(len(cleaned_df))
-            current_start_date = (pd.to_datetime(cleaned_df['open_time'].iloc[-1], utc=True) +
-                                pd.Timedelta(**{unit: int(interval[:-1])})).strftime('%Y-%m-%d %H:%M:%S')
-
+            current_start_date = (pd.to_datetime(cleaned_df['open_time'].iloc[-1], utc=True) + pd.Timedelta(**{unit: interval_value})).strftime('%Y-%m-%d %H:%M:%S')
             if pd.to_datetime(current_start_date, utc=True) >= end_dt:
                 break
 
@@ -268,17 +255,28 @@ class HistoricalDataHandler(DataHandler):
         current_start_date = start_date
         first_chunk = True
         output_file_path = self.file_path(symbol, interval, start_date, end_date, raw=True, file_type=file_type)
-        end_date = end_date or dt.now(pytz.UTC).strftime('%Y-%m-%d')
+        end_date = end_date or datetime.now(pytz.UTC).strftime('%Y-%m-%d')
         start_dt, end_dt = pd.to_datetime(start_date, utc=True), pd.to_datetime(end_date, utc=True)
+        interval_value = int(''.join(filter(str.isdigit, interval)))
+        interval_unit = ''.join(filter(str.isalpha, interval))
 
-        if interval.endswith('d'):
-            total_duration, unit, delta = (end_dt - start_dt).days, "days", pd.Timedelta(days=int(interval[:-1]))
-        elif interval.endswith('h'):
-            total_duration, unit, delta = (end_dt - start_dt).days * 24 + (end_dt - start_dt).seconds // 3600, "hours", pd.Timedelta(hours=int(interval[:-1]))
-        elif interval.endswith('m'):
-            total_duration, unit, delta = (end_dt - start_dt).days * 24 * 60 + (end_dt - start_dt).seconds // 60, "minutes", pd.Timedelta(minutes=int(interval[:-1]))
-        elif interval.endswith('s'):
-            total_duration, unit, delta = (end_dt - start_dt).days * 24 * 60 * 60 + (end_dt - start_dt).seconds, "seconds", pd.Timedelta(seconds=int(interval[:-1]))
+        # For tqdm progress bar
+        if interval_unit == 'd':
+            total_duration = ((end_dt - start_dt).days)*interval_value
+            unit = "days"
+            period_default = f'{interval_value}D'
+        elif interval_unit == 'h':
+            total_duration = ((end_dt - start_dt).days * 24 + (end_dt - start_dt).seconds // 3600)//interval_value
+            unit = "hours"
+            period_default = f'{interval_value}h'
+        elif interval_unit == 'm':
+            total_duration = ((end_dt - start_dt).days * 24 * 60 + (end_dt - start_dt).seconds // 60)//interval_value
+            unit = "minutes"
+            period_default = f'{interval_value}min'
+        elif interval_unit == 's':
+            total_duration = ((end_dt - start_dt).days * 24 * 60 * 60 + (end_dt - start_dt).seconds)//interval_value
+            unit = "seconds"
+            period_default = f'{interval_value}S'
         else:
             raise ValueError("Unsupported interval format. Use 's', 'm', 'h', or 'd'.")
 
@@ -297,7 +295,7 @@ class HistoricalDataHandler(DataHandler):
             first_chunk = False
 
             pbar.update(len(df_chunk))
-            current_start_date = (pd.to_datetime(df_chunk['open_time'].iloc[-1], utc=True) + delta).strftime('%Y-%m-%d %H:%M:%S')
+            current_start_date = (pd.to_datetime(df_chunk['open_time'].iloc[-1], utc=True) + pd.Timedelta(**{unit: interval_value})).strftime('%Y-%m-%d %H:%M:%S')
             if pd.to_datetime(current_start_date, utc=True) >= end_dt:
                 break
 
@@ -317,19 +315,29 @@ class HistoricalDataHandler(DataHandler):
         current_start_date = start_date
         first_chunk = True
         output_file_path = self.file_path(symbol, interval, start_date, end_date, rescaled=True, file_type=file_type)
-        end_date = end_date or dt.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S')
+        end_date = end_date or datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S')
         start_dt = pd.to_datetime(start_date, utc=True)
         end_dt = pd.to_datetime(end_date, utc=True)
+        interval_value = int(''.join(filter(str.isdigit, interval)))
+        interval_unit = ''.join(filter(str.isalpha, interval))
 
-        # Determine the total duration and time unit
-        if interval.endswith('d'):
-            total_duration, unit, period_default = (end_dt - start_dt).days, "days", 'D'
-        elif interval.endswith('h'):
-            total_duration, unit, period_default = (end_dt - start_dt).days * 24 + (end_dt - start_dt).seconds // 3600, "hours", 'h'
-        elif interval.endswith('m'):
-            total_duration, unit, period_default = (end_dt - start_dt).days * 24 * 60 + (end_dt - start_dt).seconds // 60, "minutes", 'min'
-        elif interval.endswith('s'):
-            total_duration, unit, period_default = (end_dt - start_dt).days * 24 * 60 * 60 + (end_dt - start_dt).seconds, "seconds", 'S'
+        # For tqdm progress bar
+        if interval_unit == 'd':
+            total_duration = ((end_dt - start_dt).days)*interval_value
+            unit = "days"
+            period_default = f'{interval_value}D'
+        elif interval_unit == 'h':
+            total_duration = ((end_dt - start_dt).days * 24 + (end_dt - start_dt).seconds // 3600)//interval_value
+            unit = "hours"
+            period_default = f'{interval_value}h'
+        elif interval_unit == 'm':
+            total_duration = ((end_dt - start_dt).days * 24 * 60 + (end_dt - start_dt).seconds // 60)//interval_value
+            unit = "minutes"
+            period_default = f'{interval_value}min'
+        elif interval_unit == 's':
+            total_duration = ((end_dt - start_dt).days * 24 * 60 * 60 + (end_dt - start_dt).seconds)//interval_value
+            unit = "seconds"
+            period_default = f'{interval_value}S'
         else:
             raise ValueError("Unsupported interval format. Use 's', 'm', 'h', or 'd'.")
 
@@ -406,5 +414,5 @@ class HistoricalDataHandler(DataHandler):
                 if rescale:
                     # Save rescaled data chunks
                     print(f"Fetching rescaled data for {symbol} at interval {interval}")
-                    self.save_rescaled_chunks(symbol, interval, start_date, end_date, scaler = scaler, limit=limit, rate_limit_delay=rate_limit_delay, file_type=file_type)
+                    self.save_rescaled_chunks(symbol, interval, start_date, end_date, scaler = scaler, limit=limit, rate_limit_delay=rate_limit_delay, file_type=file_type, is_scaler=is_scaler)
                 
