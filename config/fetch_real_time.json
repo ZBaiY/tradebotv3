@@ -1,13 +1,21 @@
 {
-    "interval": "15m",
+    "interval": "1m",
     "file_type": "csv",
     "scaler": "standard",
     "historical_path":"data/historical/for_scaler", 
-    "symbols": ["ETHUSDT", "BTCUSDT", "ADAUSDT", "SOLUSDT", "XTZUSDT"],
+    "symbols": ["ETHUSDT", "BTCUSDT"],
+    "retry_if_error": 5,
+    "memory_setting": {
+        "window_size": 1000,
+        "memory_limit": 50
+    },
     "log_setting": {
-        "path": "data/real_time",
-        "file_name1": "data_logs",
-        "file_name2": "time_logs"
+        "path": "data/real_time/logs",
+        "file_name1": "data_logs.log",
+        "file_name2": "time_logs.log",
+        "file_name3": "memory_logs.log",
+        "file_name4": "warning_logs.log",
+        "file_name5": "error_logs.log"
     },
     "params": {
         "check_labels": true,

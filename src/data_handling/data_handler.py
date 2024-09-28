@@ -124,7 +124,7 @@ class DataCleaner:
             "timezone_adjust": False,
             "zero_variance": True,
             "remove_outliers": True,
-            "resample_freq": "H", 
+            "resample_freq": "h", 
             "outlier_threshold": 20, 
             "adjacent_count": 7, 
             "utc_offset": 3
@@ -151,9 +151,9 @@ class DataCleaner:
                     
         # Batch conversion of data types
         for column, dtype in {
-            'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float',
-            'quote_asset_volume': 'float', 'number_of_trades': 'int', 'taker_buy_base_asset_volume': 'float',
-            'taker_buy_quote_asset_volume': 'float', 'ignore': 'float'
+            'open': 'float32', 'high': 'float32', 'low': 'float32', 'close': 'float32', 'volume': 'float32',
+            'quote_asset_volume': 'float32', 'number_of_trades': 'int32', 'taker_buy_base_asset_volume': 'float32',
+            'taker_buy_quote_asset_volume': 'float32', 'ignore': 'float32'
         }.items():
             if column in self.df.columns:
                 self.df[column] = self.df[column].astype(dtype)
@@ -369,16 +369,16 @@ class DataChecker:
         if self.expected_types is None:
             self.expected_types = {
                 'open_time': 'datetime64[ns, UTC]',
-                'open': 'float64',
-                'high': 'float64',
-                'low': 'float64',
-                'close': 'float64',
-                'volume': 'float64',
+                'open': 'float32',
+                'high': 'float32',
+                'low': 'float32',
+                'close': 'float32',
+                'volume': 'float32',
                 'close_time': 'datetime64[ns, UTC]',
-                'quote_asset_volume': 'float64',
-                'number_of_trades': 'int',
-                'taker_buy_base_asset_volume': 'float64',
-                'taker_buy_quote_asset_volume': 'float64',
+                'quote_asset_volume': 'float32',
+                'number_of_trades': 'int32',
+                'taker_buy_base_asset_volume': 'float32',
+                'taker_buy_quote_asset_volume': 'float32',
             }
         
         data_types = self.df.dtypes
