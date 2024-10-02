@@ -11,6 +11,7 @@ import pandas as pd
 import joblib
 import os
 import re
+import pickle
 import json
 from datetime import datetime
 
@@ -68,7 +69,7 @@ def first_update():
     folder_path = 'data/historical/processed/for_train'  # Input folder path
     scaler_save_base_path = 'data/scaler'  # Base path to save the scaler models
     json_file = 'config/fetch_real_time.json'  # JSON config file
-
+    
     #print the json_file's full path
 
     # Read the required labels from the config file)
@@ -86,6 +87,7 @@ def first_update():
         scaler_save_base_path=scaler_save_base_path,
         update_frequency=672  # Weekly updates
     )
+    
 
 
 
@@ -114,10 +116,14 @@ def update():
         interval=interval,  # Specify the interval (e.g., '15m', '1h')
         scaler_type=scaler_type,
         scaler_save_base_path= scaler_save_base_path,  # Path where scalers are saved
-        recent_data_path='data/recent',  # Path where recent data CSVs are stored
+        recent_data_path='data/historical/processed/for_train',  # Path where recent data CSVs are stored
         update_frequency=500  # Fetch the most recent 500 data points (e.g., weekly update)
     )
 
 
 if __name__ == '__main__':
-    update()
+    scaler_1 = joblib.load('data/scaler/ETHUSDT/15m/open_standard.pkl')
+    data_1 = pd.read_csv('data/real_time/processed/ETHUSDT_15m_2024-10.csv')
+    data_1 = data_1[['open']]
+    data_1 = scaler_1.transform(data_1.values.reshape(-1, 1))
+    print(data_1)

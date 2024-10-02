@@ -535,7 +535,7 @@ class ScalerHandler:
         # Use only the last `update_frequency` data points for fitting the scaler
         if len(data) > self.update_frequency:
             data = data[-self.update_frequency:]
-
+        
         for label in self.required_labels:
             if label in data.columns:
                 if 'time' not in label:
@@ -543,9 +543,14 @@ class ScalerHandler:
                     scaler.fit(data[label].values.reshape(-1, 1))
 
                     # Save the scaler model after fitting
-                    save_path = os.path.join(self.scaler_save_path, f"{self.symbol}_{label}_{self.scaler_type}.pkl")
+                    save_path = os.path.join(self.scaler_save_path, f"{label}_{self.scaler_type}.pkl")
                     joblib.dump(scaler, save_path)
+                    # scaler = joblib.load(save_path)
+                    # scaled_data = scaler.transform(data[label].values.reshape(-1, 1))
+                    # print(f"Scaled data for {self.symbol} {label}:\n{scaled_data[:5]}")  # Print the first 5 rows of the scaled data
+                    # input("Press Enter to continue...")
                     print(f"Scaler for {self.symbol} {label} saved at {save_path}")
+        
 
     def load_scalers(self):
         """Load the previously saved scalers."""
