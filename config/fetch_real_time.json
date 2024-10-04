@@ -1,5 +1,5 @@
 {
-    "interval": "15m",
+    "interval": "1m",
     "file_type": "csv",
     "scaler": "standard",
     "historical_path":"data/historical/for_scaler", 

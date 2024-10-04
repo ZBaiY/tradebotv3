@@ -214,10 +214,10 @@ class HistoricalDataHandler(DataHandler):
             # Data checking using DataChecker with loaded JSON parameters
             data_checker = DataChecker(cleaned_df, self.checker_params['check_params'], self.checker_params.get('expected_types'))
             results = data_checker.perform_check()
-
+            cleaned_df = cleaned_df.set_index('open_time')
             if not results['is_clean']:
                 if file_type == 'csv':
-                    cleaned_df.to_csv(output_file_path, mode='a', header=True, index=False)
+                    cleaned_df.to_csv(output_file_path, mode='a', header=True, index=True)
                 elif file_type == 'h5':
                     cleaned_df.to_hdf(output_file_path, key='df', mode='w' if first_chunk else 'a', format='table', append=not first_chunk)
                 print("Data chunk is not clean, please check the results.")
@@ -226,7 +226,7 @@ class HistoricalDataHandler(DataHandler):
 
             # Save the cleaned chunk
             if file_type == 'csv':
-                cleaned_df.to_csv(output_file_path, mode='w' if first_chunk else 'a', header=first_chunk, index=False)
+                cleaned_df.to_csv(output_file_path, mode='w' if first_chunk else 'a', header=first_chunk, index=True)
             elif file_type == 'h5':
                 cleaned_df.to_hdf(output_file_path, key='df', mode='w' if first_chunk else 'a', format='table', append=not first_chunk)
             
@@ -285,10 +285,10 @@ class HistoricalDataHandler(DataHandler):
         while True:
             df_chunk = self.fetch_data_chunk(symbol, interval, current_start_date, end_date, limit, rate_limit_delay)
             if df_chunk.empty: break
-
+            df_chunk = df_chunk.set_index('open_time')
             # Save raw data chunk
             if file_type == 'csv':
-                df_chunk.to_csv(output_file_path, mode='w' if first_chunk else 'a', header=first_chunk, index=False)
+                df_chunk.to_csv(output_file_path, mode='w' if first_chunk else 'a', header=first_chunk, index=True)
             elif file_type == 'h5':
                 df_chunk.to_hdf(output_file_path, key='df', mode='w' if first_chunk else 'a', format='table', append=not first_chunk)
             
@@ -355,16 +355,16 @@ class HistoricalDataHandler(DataHandler):
             # Rescale the cleaned DataFrame
             
             rescaled_df = rescale_data(cleaned_df, scaler)
-
+            rescaled_df = rescaled_df.set_index('open_time')
             # Data checking using DataChecker with loaded JSON parameters, the rescaler can produce unlogical values, so only check the cleaned data
             # data_checker = DataChecker(rescaled_df, self.checker_params['check_params'], self.checker_params.get('expected_types'))
             # results = data_checker.perform_check()
 
             # Save the rescaled chunk
             if file_type == 'csv':
-                cleaned_df.to_csv(output_file_path, mode='w' if first_chunk else 'a', header=first_chunk, index=False)
+                rescaled_df.to_csv(output_file_path, mode='w' if first_chunk else 'a', header=first_chunk, index=True)
             elif file_type == 'h5':
-                cleaned_df.to_hdf(output_file_path, key='df', mode='w' if first_chunk else 'a', format='table', append=not first_chunk)
+                rescaled_df.to_hdf(output_file_path, key='df', mode='w' if first_chunk else 'a', format='table', append=not first_chunk)
             
             first_chunk = False
 
@@ -414,5 +414,5 @@ class HistoricalDataHandler(DataHandler):
                 if rescale:
                     # Save rescaled data chunks
                     print(f"Fetching rescaled data for {symbol} at interval {interval}")
-                    self.save_rescaled_chunks(symbol, interval, start_date, end_date, scaler = scaler, limit=limit, rate_limit_delay=rate_limit_delay, file_type=file_type, is_scaler=is_scaler)
+                    self.save_rescaled_chunks(symbol, interval, start_date, end_date, scaler = scaler, limit=limit, rate_limit_delay=rate_limit_delay, file_type=file_type)
                 

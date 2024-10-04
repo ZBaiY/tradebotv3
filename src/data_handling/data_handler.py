@@ -71,7 +71,7 @@ class DataHandler:
     
     
     def load_data(self, file_path): ## If the future add h5 file, csv file, etc.
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, index_col='open_time', parse_dates=True)
         return df
 
 def rescale_data(df, scaler_type='standard'):
@@ -530,7 +530,7 @@ class ScalerHandler:
         if not os.path.exists(path_for_symbol):
             print(f"No historical data found for {self.symbol}. Skipping.")
             return
-        data = pd.read_csv(path_for_symbol)
+        data = pd.read_csv(path_for_symbol, index_col='open_time', parse_dates=True)
 
         # Use only the last `update_frequency` data points for fitting the scaler
         if len(data) > self.update_frequency:
@@ -602,7 +602,7 @@ def update_scaler_with_recent_data(symbols, required_labels, interval, scaler_ty
                 recent_data = data_handler.fetch_klines_with_limit(symbol, interval, update_frequency)
                 #recent_data.to_csv(recent_data_file, index=False)
             else:
-                recent_data = pd.read_csv(recent_data_file)
+                recent_data = pd.read_csv(recent_data_file, index_col='open_time', parse_dates=True)
 
         # Define the path where the scaler models for the symbol and interval are saved
         scaler_save_path = os.path.join(scaler_save_base_path, symbol, interval)

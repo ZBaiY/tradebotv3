@@ -20,8 +20,6 @@ import numpy as np
 import time
 import gc
 import psutil
-import pickle
-from collections import deque
 import joblib
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import logging
@@ -184,16 +182,16 @@ class RealTimeDataHandler(DataHandler):
         self.scaler= self.config_handler.get_config('scaler')
         self.log_settings['path'] = os.path.join(os.path.dirname(__file__),'../..', self.log_settings['path'])
 
-        self.data_logger = LoggingHandler(self.log_settings['path'],self.log_settings['file_name1']).logger
+        self.data_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}").logger
         # self.data_logger.info("RealTimeDataHandler initialized with config from: {}".format(input_file))
-        self.time_logger = LoggingHandler(self.log_settings['path'],self.log_settings['file_name2']).logger
-        self.memory_logger = LoggingHandler(self.log_settings['path'],self.log_settings['file_name3']).logger
-        self.warning_logger = LoggingHandler(self.log_settings['path'],self.log_settings['file_name4']).logger
-        self.error_logger = LoggingHandler(self.log_settings['path'],self.log_settings['file_name5']).logger
+        self.time_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}").logger
+        self.memory_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}").logger
+        self.warning_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}").logger
+        self.error_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}").logger
         # Initialize sliding window (fixed-size buffer) for cleaned and rescaled data
+        
         self.cleaned_data = {symbol: pd.DataFrame() for symbol in self.symbols}
         self.rescaled_data = {symbol: pd.DataFrame() for symbol in self.symbols}
-
 
         memory_setting = self.config_handler.get_config('memory_setting', {'window_size': 1000, 'memory_limit': 80})
         self.memory_limit = memory_setting['memory_limit'] # Memory limit in percentage
@@ -209,14 +207,14 @@ class RealTimeDataHandler(DataHandler):
                 self.cleaned_data[symbol] = df
             else:
                 df_cleaned = self.clean_data(df)
-                self.cleaned_data[symbol] = pd.concat([self.cleaned_data[symbol], df_cleaned], ignore_index=True)
+                self.cleaned_data[symbol] = pd.concat([self.cleaned_data[symbol], df_cleaned])
         
         if rescaled:
             if self.rescaled_data[symbol].empty:  # Check if DataFrame is empty
                 self.rescaled_data[symbol] = df
             else:
                 # df_rescaled = self.rescale_data(df, symbol)
-                self.rescaled_data[symbol] = pd.concat([self.rescaled_data[symbol], df], ignore_index=True)
+                self.rescaled_data[symbol] = pd.concat([self.rescaled_data[symbol], df])
         if len(self.cleaned_data[symbol]) > self.window_size:
             # Drop the oldest rows to keep only the last `window_size` rows
             self.cleaned_data[symbol] = self.cleaned_data[symbol].iloc[-self.window_size:]
@@ -293,12 +291,13 @@ class RealTimeDataHandler(DataHandler):
             self.data_logger.info("No missing data to fetch.")
             return
         self.data_logger.info(f"Fetching missing data from {last_fetch_time} to {current_time}")
-
         # Loop through the missing time range in intervals and fetch data
         time_cursor = last_fetch_time
+        month_tracker = time_cursor.strftime("%Y-%m")
         # print("Fetching missing data started., time_cursor: ", time_cursor)
         while time_cursor < current_time:
             time_cursor += self.interval
+            month_tracker = time_cursor.strftime("%Y-%m")
             if time_cursor >= current_time:
                 break
             #     time_cursor = current_time  # Ensure not to fetch data beyond the current time
@@ -307,18 +306,21 @@ class RealTimeDataHandler(DataHandler):
                     df_raw = self.get_data_at_time(symbol, time_cursor)
                     # Process and save the fetched data
                     if not df_raw.empty:
-                        self.save_real_time_data(df_raw, symbol, raw=True)
+                        df_time = df_raw.set_index('open_time')
+                        self.save_real_time_data(df_time, symbol, month_tracker, raw=True)
                         self.data_logger.info(f"Fetched and saved raw data for {symbol} at {datetime.now(timezone.utc)}")
                         
                         # Process and save the fetched data
                         df_cleaned = self.clean_data(df_raw)
-                        self.append_real_time_data(df_cleaned, symbol, process=True)
-                        self.save_real_time_data(df_cleaned, symbol, process=True)
+                        df_time = df_cleaned.set_index('open_time')
+                        self.append_real_time_data(df_time, symbol, process=True)
+                        self.save_real_time_data(df_time, symbol, month_tracker, process=True)
                         self.data_logger.info(f"Cleaned and saved processed data for {symbol} at {datetime.now(timezone.utc)}")
                         # Rescale and save the processed data
                         df_rescaled = self.rescale_data(df_cleaned, symbol)
-                        self.append_real_time_data(df_rescaled, symbol, rescaled=True)
-                        self.save_real_time_data(df_rescaled, symbol, rescaled=True)
+                        df_time = df_rescaled.set_index('open_time')
+                        self.append_real_time_data(df_time, symbol, rescaled=True)
+                        self.save_real_time_data(df_time, symbol, month_tracker, rescaled=True)
                         self.data_logger.info(f"Rescaled and saved rescaled data for {symbol} at {datetime.now(timezone.utc)}")
                 except Exception as e:
                     self.error_logger.error(f"Error fetching missing data for {symbol}: {e}")
@@ -460,7 +462,7 @@ class RealTimeDataHandler(DataHandler):
 
     def load_initial(self):
         def check_required_labels(df, required_labels):
-            missing_labels = [label for label in required_labels if label not in df.columns]
+            missing_labels = [label for label in required_labels if label not in df.columns and 'time' not in label]
             if missing_labels:
                 self.error_logger.error(f"Missing required labels {missing_labels}")
                 return False
@@ -472,7 +474,9 @@ class RealTimeDataHandler(DataHandler):
         for symbol in self.symbols:
             processed_file_path = self.file_path_month(symbol=symbol, month=last_month, process=True)
             if os.path.exists(processed_file_path):
-                df = pd.read_csv(processed_file_path)
+                df = pd.read_csv(processed_file_path, index_col='open_time', parse_dates=True)
+                print(df.index.values)
+                input("LastMonth, Press Enter to continue...")
                 if check_required_labels(df, required_labels):
                     self.data_logger.info(f"Loading processed data for {symbol} from {processed_file_path}")
                     self.append_real_time_data(df, symbol, process=True)
@@ -484,7 +488,7 @@ class RealTimeDataHandler(DataHandler):
 
             processed_file_path = self.file_path_month(symbol=symbol, month=self.current_month, process=True)
             if os.path.exists(processed_file_path):
-                df = pd.read_csv(processed_file_path)
+                df = pd.read_csv(processed_file_path, index_col='open_time', parse_dates=True)
                 if check_required_labels(df, required_labels):
                     self.data_logger.info(f"Loading processed data for {symbol} from {processed_file_path}")
                     self.append_real_time_data(df, symbol, process=True)
@@ -498,7 +502,7 @@ class RealTimeDataHandler(DataHandler):
         for symbol in self.symbols:
             rescaled_file_path = self.file_path_month(symbol=symbol, month=last_month, rescaled=True)
             if os.path.exists(rescaled_file_path):
-                df = pd.read_csv(rescaled_file_path)
+                df = pd.read_csv(rescaled_file_path, index_col='open_time', parse_dates=True)
                 if check_required_labels(df, required_labels):
                     self.data_logger.info(f"Loading rescaled data for {symbol} from {rescaled_file_path}")
                     self.append_real_time_data(df, symbol, rescaled=True)
@@ -510,7 +514,7 @@ class RealTimeDataHandler(DataHandler):
 
             rescaled_file_path = self.file_path_month(symbol=symbol, month=self.current_month, rescaled=True)
             if os.path.exists(rescaled_file_path):
-                df = pd.read_csv(rescaled_file_path)
+                df = pd.read_csv(rescaled_file_path, index_col='open_time', parse_dates=True)
                 if check_required_labels(df, required_labels):
                     self.data_logger.info(f"Loading rescaled data for {symbol} from {rescaled_file_path}")
                     self.append_real_time_data(df, symbol, rescaled=True)
@@ -548,12 +552,15 @@ class RealTimeDataHandler(DataHandler):
         # print("after: ", df)
         return df
     
-    def save_real_time_data(self, df, symbol, process=False, raw=False, rescaled=False):
-        output_file = self.file_path(symbol=symbol, date=datetime.now().strftime('%Y-%m-%d'), process=process, raw=raw, rescaled=rescaled)
-        if not os.path.exists(output_file):
-            df.to_csv(output_file, mode='w', header=True, index=False)
+    def save_real_time_data(self, df, symbol, month=None, process=False, raw=False, rescaled=False):
+        if month:
+            output_file = self.file_path_month(symbol=symbol, month=month, process=process, raw=raw, rescaled=rescaled)
         else:
-            df.to_csv(output_file, mode='a', header=False, index=False)
+            output_file = self.file_path(symbol=symbol, date=datetime.now().strftime('%Y-%m-%d'), process=process, raw=raw, rescaled=rescaled)
+        if not os.path.exists(output_file):
+            df.to_csv(output_file, mode='w', header=True, index=True)
+        else:
+            df.to_csv(output_file, mode='a', header=False, index=True)
         self.data_logger.info(f"Real-time data saved to {output_file}")
 
 
@@ -663,22 +670,84 @@ class RealTimeDataHandler(DataHandler):
 
             self.data_logger.info(f"Scalers updated for {symbol} with {self.interval_str} data.")
     
-    def sample_run(self):
-        self.load_initial() # load some initial data in the memory
+    def data_fetch_loop(self, next_fetch_time, last_fetch_time):
+        
+        self.check_for_new_month()
+        self.check_for_new_week()
+        for symbol in self.symbols:
+            if next_fetch_time <= last_fetch_time:
+                self.data_logger.info(f"Skipping fetch for {symbol} at {next_fetch_time}")
+                continue
+            df_raw = self.get_data_at_time(symbol, next_fetch_time)
+            df_time = df_raw.set_index('open_time')
+            self.save_real_time_data(df_time, symbol, raw=True)
+            self.data_logger.info(f"Fetched and saved raw data for {symbol} at {datetime.now(timezone.utc)}")
 
+            df_cleaned = self.clean_data(df_raw)
+            df_time = df_cleaned.set_index('open_time')
+            self.append_real_time_data(df_time, symbol, process=True)  
+            self.save_real_time_data(df_time, symbol, process=True)
+            self.data_logger.info(f"Cleaned and saved processed data for {symbol} at {datetime.now(timezone.utc)}")
+
+            df_rescaled = self.rescale_data(df_cleaned, symbol)
+            df_time = df_rescaled.set_index('open_time')
+            self.append_real_time_data(df_time, symbol, rescaled=True)
+            self.save_real_time_data(df_time, symbol, rescaled=True)
+            self.data_logger.info(f"Rescaled and saved rescaled data for {symbol} at {datetime.now(timezone.utc)}")
+
+        if 'df_raw' in locals():
+            del df_raw
+        if 'df_cleaned' in locals():
+            del df_cleaned
+        if 'df_rescaled' in locals():
+            del df_rescaled
+        if 'df_time' in locals():
+            del df_time
+        gc.collect()
+        # Save last fetch time and log it
+        fetch_time = datetime.now(timezone.utc)
+        fetch_time = fetch_time.replace(second=0, microsecond=0)
+        self.time_logger.info(f"Last fetch time: {next_fetch_time}")
+        self.data_logger.info(f"Saved last fetch time: {next_fetch_time}")
+        # At the end of the loop for each symbol
+        
+        
+    def pre_run_data(self):
+        """
+        Prepares the environment before running the main process.
+        Loads initial data, determines the last fetch time, and calculates the next fetch time.
+        
+        Returns:
+            tuple: (next_fetch_time, last_fetch_time)
+        """
+        self.load_initial()  # Load some initial data in the memory
         last_fetch_time = None
-        if os.path.exists(os.path.join(self.log_settings['path'],self.log_settings['file_name2'])):
+        log_file_path = os.path.join(self.log_settings['path'], self.log_settings['file_name2'])
+        
+        if os.path.exists(log_file_path):
             last_fetch_time = self.load_last_fetch_time()
+            
 
+        
         current_time = datetime.now(timezone.utc)
-        if last_fetch_time is None: # If no last fetch time is found, fetch data for the last 30 intervals
-            last_fetch_time =  current_time - (current_time - datetime.min.replace(tzinfo=timezone.utc)) % self.interval- self.window_size*self.interval
+        if last_fetch_time is None:  # If no last fetch time is found, fetch data for the last 30 intervals
+            last_fetch_time = current_time - (current_time - datetime.min.replace(tzinfo=timezone.utc)) % self.interval - self.window_size * self.interval
         
         if last_fetch_time <= current_time - self.interval:
             self.fetch_missing_data(last_fetch_time)
-
         next_fetch_time = current_time - (current_time - datetime.min.replace(tzinfo=timezone.utc)) % self.interval
+        last_fetch_month = last_fetch_time.strftime("%Y-%m")
+
+        if last_fetch_month != self.current_month:
+            pass
+
+        return next_fetch_time, last_fetch_time
         
+
+
+
+    def sample_run(self):
+        next_fetch_time,last_fetch_time = self.pre_run_data()
         while True:
             '''
             # (Optional) is not used for crypto data
@@ -687,45 +756,30 @@ class RealTimeDataHandler(DataHandler):
             #     time.sleep(60)
             #     continue
             '''
-            self.check_for_new_month()
-            self.check_for_new_week()
-            for symbol in self.symbols:
-                if next_fetch_time <= last_fetch_time:
-                    self.data_logger.info(f"Skipping fetch for {symbol} at {next_fetch_time}")
-                    continue
-                df_raw = self.get_data_at_time(symbol, next_fetch_time)
-                self.save_real_time_data(df_raw, symbol, raw=True)
-                self.data_logger.info(f"Fetched and saved raw data for {symbol} at {datetime.now(timezone.utc)}")
-
-                df_cleaned = self.clean_data(df_raw)
-                self.append_real_time_data(df_cleaned, symbol, process=True)  
-                self.save_real_time_data(df_cleaned, symbol, process=True)
-                self.data_logger.info(f"Cleaned and saved processed data for {symbol} at {datetime.now(timezone.utc)}")
-
-                df_rescaled = self.rescale_data(df_cleaned, symbol)
-                self.append_real_time_data(df_rescaled, symbol, rescaled=True)
-                self.save_real_time_data(df_rescaled, symbol, rescaled=True)
-                self.data_logger.info(f"Rescaled and saved rescaled data for {symbol} at {datetime.now(timezone.utc)}")
-    
-            if 'df_raw' in locals():
-                del df_raw
-            if 'df_cleaned' in locals():
-                del df_cleaned
-            if 'df_rescaled' in locals():
-                del df_rescaled
-            gc.collect()
-            # Save last fetch time and log it
-            fetch_time = datetime.now(timezone.utc)
-            fetch_time = fetch_time.replace(second=0, microsecond=0)
-            self.time_logger.info(f"Last fetch time: {next_fetch_time}")
-            self.data_logger.info(f"Saved last fetch time: {next_fetch_time}")
-            # At the end of the loop for each symbol
-            
+            self.data_fetch_loop(next_fetch_time, last_fetch_time)
             now = datetime.now(timezone.utc)
             next_fetch_time = self.calculate_next_grid(now)
             sleep_duration = (next_fetch_time - now).total_seconds()
             self.data_logger.info(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
+
             time.sleep(sleep_duration)
+    
+    def get_data():
+        pass
+    def get_last_data():
+        pass
+    def get_data_limit(limit):
+        pass
+
+    """
+    Each subscriber (e.g., Feature, SignalProcessing, Model) will register with RealTimeDataHandler, 
+    allowing the data handler to notify them when new data is available. 
+    This avoids constant polling and unnecessary overhead in RealtimeDealer.
+    
+    def notify_subscribers(self, new_data):
+        for subscriber in self.subscribers:
+            subscriber.update(new_data)
+    """
 
 
 if __name__ == '__main__':

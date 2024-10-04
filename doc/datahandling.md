@@ -1,3 +1,7 @@
+###### Updates needed: if last_fetch month is different, check the data files location, and move them (not very necessary)
+###### Updates needed: detect market stops---volume==0
+###### Updates needed: similar to the last one, check the validation of the data. But not for closing the bot
+
 Explanation of cleaning json parameters
 {
     "base_url": "https://api.binance.com",
