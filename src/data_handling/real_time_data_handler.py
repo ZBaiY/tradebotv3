@@ -9,7 +9,6 @@ from src.data_handling.data_handler import DataHandler, ScalerHandler, DataClean
 import pytz
 import logging
 from datetime import datetime, timedelta, timezone
-from src.memory_storage.memory_storage import MemoryMonitor
 import json
 import shutil
 import logging
@@ -50,7 +49,8 @@ class SizeLimitedFileHandler(logging.FileHandler):
             self.stream = self._open()
         if self.maxBytes > 0:                   # are we rolling over?
             self.stream.seek(0, 2)  # due to non-posix-compliant Windows feature
-            if self.stream.tell() + len(self.format(record)) >= self.maxBytes:
+            formatted_record = self.format(record)
+            if self.stream.tell() + len(formatted_record) >= self.maxBytes:
                 return True
         return False
 
@@ -182,12 +182,12 @@ class RealTimeDataHandler(DataHandler):
         self.scaler= self.config_handler.get_config('scaler')
         self.log_settings['path'] = os.path.join(os.path.dirname(__file__),'../..', self.log_settings['path'])
 
-        self.data_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}").logger
+        self.data_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}.log").logger
         # self.data_logger.info("RealTimeDataHandler initialized with config from: {}".format(input_file))
-        self.time_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}").logger
-        self.memory_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}").logger
-        self.warning_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}").logger
-        self.error_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}").logger
+        self.time_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name2']}_{self.interval_str}.log").logger
+        self.memory_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name3']}_{self.interval_str}.log").logger
+        self.warning_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name4']}_{self.interval_str}.log").logger
+        self.error_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name5']}_{self.interval_str}.log").logger
         # Initialize sliding window (fixed-size buffer) for cleaned and rescaled data
         
         self.cleaned_data = {symbol: pd.DataFrame() for symbol in self.symbols}
@@ -196,9 +196,10 @@ class RealTimeDataHandler(DataHandler):
         memory_setting = self.config_handler.get_config('memory_setting', {'window_size': 1000, 'memory_limit': 80})
         self.memory_limit = memory_setting['memory_limit'] # Memory limit in percentage
         self.window_size = memory_setting['window_size'] # Sliding window size
-        self.memory_monitor = MemoryMonitor(self.memory_limit)
         self.current_month = datetime.now().strftime("%Y-%m")
         self.current_week = datetime.now().strftime("%Y-%W")
+
+        self.subscribers = [] # List of subscribers to notify when new data is available
 
     def append_real_time_data(self, df, symbol, process=False, rescaled=False):
         # Append to the cleaned data dictionary for the respective symbol
@@ -324,7 +325,9 @@ class RealTimeDataHandler(DataHandler):
                         self.data_logger.info(f"Rescaled and saved rescaled data for {symbol} at {datetime.now(timezone.utc)}")
                 except Exception as e:
                     self.error_logger.error(f"Error fetching missing data for {symbol}: {e}")
-        
+            current_time = datetime.now(timezone.utc)  # Update the current time, sometimes the loop goes beyond the current time
+            current_time = current_time - (current_time - datetime.min.replace(tzinfo=timezone.utc)) % self.interval
+ 
         self.data_logger.info("Fetching missing data completed., time_cursor: ", time_cursor)
 
 
@@ -423,7 +426,7 @@ class RealTimeDataHandler(DataHandler):
         Load the last fetch time from the log file by reading the last entry.
         :return: The last fetch time as a datetime object or None if not found.
         """
-        log_file_path = os.path.join(self.log_settings['path'], self.log_settings['file_name2'])
+        log_file_path = os.path.join(self.log_settings['path'], f"{self.log_settings['file_name2']}_{self.interval_str}.log")
         last_fetch_time = None
 
         # Open the log file and read it in reverse to find the last fetch time entry
@@ -563,11 +566,6 @@ class RealTimeDataHandler(DataHandler):
             df.to_csv(output_file, mode='a', header=False, index=True)
         self.data_logger.info(f"Real-time data saved to {output_file}")
 
-
-    def save_last_fetch_time(self, fetch_time):
-        # Append the last fetch time to the log file
-        with open(self.log_settings['path'], 'a') as log_file:
-            log_file.write(f"Last fetch time for {self.symbols}: {fetch_time}\n")
 
     def transfer_old_data(self,symbol):
         """
@@ -722,7 +720,7 @@ class RealTimeDataHandler(DataHandler):
         """
         self.load_initial()  # Load some initial data in the memory
         last_fetch_time = None
-        log_file_path = os.path.join(self.log_settings['path'], self.log_settings['file_name2'])
+        log_file_path = os.path.join(self.log_settings['path'],f"{self.log_settings['file_name2']}_{self.interval_str}.log")
         
         if os.path.exists(log_file_path):
             last_fetch_time = self.load_last_fetch_time()
@@ -735,6 +733,7 @@ class RealTimeDataHandler(DataHandler):
         
         if last_fetch_time <= current_time - self.interval:
             self.fetch_missing_data(last_fetch_time)
+        current_time = datetime.now(timezone.utc) # Update the current time after fetching missing data
         next_fetch_time = current_time - (current_time - datetime.min.replace(tzinfo=timezone.utc)) % self.interval
         last_fetch_month = last_fetch_time.strftime("%Y-%m")
 
@@ -743,6 +742,14 @@ class RealTimeDataHandler(DataHandler):
 
         return next_fetch_time, last_fetch_time
         
+    def sample_loop(self, next_fetch_time, last_fetch_time):
+        self.data_fetch_loop(next_fetch_time, last_fetch_time)
+        now = datetime.now(timezone.utc)
+        next_fetch_time = self.calculate_next_grid(now)
+        sleep_duration = (next_fetch_time - now).total_seconds()
+        self.data_logger.info(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
+        time.sleep(sleep_duration)
+        return next_fetch_time
 
 
 
@@ -763,13 +770,29 @@ class RealTimeDataHandler(DataHandler):
             self.data_logger.info(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
 
             time.sleep(sleep_duration)
-    
-    def get_data():
-        pass
-    def get_last_data():
-        pass
-    def get_data_limit(limit):
-        pass
+
+    def notify_subscribers(self, new_data):
+        for subscriber in self.subscribers:
+            subscriber.update(new_data)
+
+    def get_data(self, symbol, clean=False, rescale=False):
+        if clean:
+            return self.cleaned_data[symbol]
+        if rescale:
+            return self.rescaled_data[symbol]
+        
+    def get_last_data(self, symbol, clean=False, rescale=False):
+        if clean:
+            return self.cleaned_data[symbol].iloc[-1]
+        if rescale:
+            return self.rescaled_data[symbol].iloc[-1]
+        
+    def get_data_limit(self, symbol, limit, clean=False, rescale=False):
+        if clean:
+            return self.cleaned_data[symbol].tail(limit)
+        if rescale:
+            return self.rescaled_data[symbol].tail(limit)
+        
 
     """
     Each subscriber (e.g., Feature, SignalProcessing, Model) will register with RealTimeDataHandler, 

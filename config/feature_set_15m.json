@@ -13,5 +13,6 @@
     "sma_period": 20,
     "ema_period": 14,
     "adx_period": 14,
-    "custom_indicator_param": 5
+    "custom_indicator_param": 5,
+    "selection_method":"correlation"
 }
