@@ -1,6 +1,7 @@
 # tradebotv3
 The most exciting version, with real time operations
 Update the scalers every one week
+The costum selector, need to develop it for next version
 
 # My Trading Bot Architecture
 

@@ -5,7 +5,7 @@ import sys
 import os
 # Add the src directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from src.data_handling.data_handler import DataHandler, ScalerHandler, DataCleaner, DataChecker, rescale_data
+from src.data_handling.data_handler import DataHandler, DataCleaner
 import pytz
 import logging
 from datetime import datetime, timedelta, timezone
@@ -19,8 +19,6 @@ import numpy as np
 import time
 import gc
 import psutil
-import joblib
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import logging
 
 ### Logging file rolling handler
@@ -176,10 +174,10 @@ class RealTimeDataHandler(DataHandler):
         self.cleaner_kwargs['params'] = self.config_handler.get_config('params')
         self.cleaner_kwargs['required_labels'] = self.config_handler.get_config('required_labels')
         self.base_url = self.build_url()
-        self.scaler_dir = 'data/scaler'
+        # self.scaler_dir = 'data/scaler'
         self.retry_attempts = self.config_handler.get_config('retry_if_error',5)
 
-        self.scaler= self.config_handler.get_config('scaler')
+        # self.scaler= self.config_handler.get_config('scaler')
         self.log_settings['path'] = os.path.join(os.path.dirname(__file__),'../..', self.log_settings['path'])
 
         self.data_logger = LoggingHandler(self.log_settings['path'],f"{self.log_settings['file_name1']}_{self.interval_str}.log").logger
@@ -191,7 +189,7 @@ class RealTimeDataHandler(DataHandler):
         # Initialize sliding window (fixed-size buffer) for cleaned and rescaled data
         
         self.cleaned_data = {symbol: pd.DataFrame() for symbol in self.symbols}
-        self.rescaled_data = {symbol: pd.DataFrame() for symbol in self.symbols}
+        # self.rescaled_data = {symbol: pd.DataFrame() for symbol in self.symbols}
 
         memory_setting = self.config_handler.get_config('memory_setting', {'window_size': 1000, 'memory_limit': 80})
         self.memory_limit = memory_setting['memory_limit'] # Memory limit in percentage
@@ -209,20 +207,24 @@ class RealTimeDataHandler(DataHandler):
             else:
                 df_cleaned = self.clean_data(df)
                 self.cleaned_data[symbol] = pd.concat([self.cleaned_data[symbol], df_cleaned])
-        
-        if rescaled:
+        if len(self.cleaned_data[symbol]) > self.window_size:
+            # Drop the oldest rows to keep only the last `window_size` rows
+            self.cleaned_data[symbol] = self.cleaned_data[symbol].iloc[-self.window_size:]
+
+        """
+            if rescaled:
             if self.rescaled_data[symbol].empty:  # Check if DataFrame is empty
                 self.rescaled_data[symbol] = df
             else:
                 # df_rescaled = self.rescale_data(df, symbol)
                 self.rescaled_data[symbol] = pd.concat([self.rescaled_data[symbol], df])
-        if len(self.cleaned_data[symbol]) > self.window_size:
-            # Drop the oldest rows to keep only the last `window_size` rows
-            self.cleaned_data[symbol] = self.cleaned_data[symbol].iloc[-self.window_size:]
         if len(self.rescaled_data[symbol]) > self.window_size:
             # Drop the oldest rows to keep only the last `window_size` rows
             self.rescaled_data[symbol] = self.rescaled_data[symbol].iloc[-self.window_size:]
                 
+        """
+
+        
     def build_url_with_time_range(self, symbol, start_time, end_time):
         """
         Builds a URL for fetching data with a specific time range for a symbol.
@@ -267,15 +269,15 @@ class RealTimeDataHandler(DataHandler):
             # Update the current month
             self.current_month = new_month
 
-    def check_for_new_week(self):
-        """
+    """def check_for_new_week(self):
+        
         Check if a new month has started, and if so, start new files and move the month-before-last data to historical.
-        """
+        
         new_week = datetime.now().strftime("%Y-%W")
         if new_week != self.current_week:
             self.memory_logger.info(f"New week detected. Updating the scalers for {new_week}.")
             self.update_scaler()
-            self.current_week = new_week
+            self.current_week = new_week"""
 
 
     def fetch_missing_data(self, last_fetch_time):
@@ -290,7 +292,7 @@ class RealTimeDataHandler(DataHandler):
         # Determine the interval for fetching (e.g., 15-minute intervals)
         if missing_time_range < self.interval:
             self.data_logger.info("No missing data to fetch.")
-            return
+            return 0
         self.data_logger.info(f"Fetching missing data from {last_fetch_time} to {current_time}")
         # Loop through the missing time range in intervals and fetch data
         time_cursor = last_fetch_time
@@ -318,18 +320,19 @@ class RealTimeDataHandler(DataHandler):
                         self.save_real_time_data(df_time, symbol, month_tracker, process=True)
                         self.data_logger.info(f"Cleaned and saved processed data for {symbol} at {datetime.now(timezone.utc)}")
                         # Rescale and save the processed data
+                        """
                         df_rescaled = self.rescale_data(df_cleaned, symbol)
                         df_time = df_rescaled.set_index('open_time')
                         self.append_real_time_data(df_time, symbol, rescaled=True)
                         self.save_real_time_data(df_time, symbol, month_tracker, rescaled=True)
                         self.data_logger.info(f"Rescaled and saved rescaled data for {symbol} at {datetime.now(timezone.utc)}")
+                        """
                 except Exception as e:
                     self.error_logger.error(f"Error fetching missing data for {symbol}: {e}")
             current_time = datetime.now(timezone.utc)  # Update the current time, sometimes the loop goes beyond the current time
             current_time = current_time - (current_time - datetime.min.replace(tzinfo=timezone.utc)) % self.interval
  
-        self.data_logger.info("Fetching missing data completed., time_cursor: ", time_cursor)
-
+        self.data_logger.info("Fetching missing data completed., time_cursor: %s", time_cursor)
 
     def fetch_data(self, url):
         try:
@@ -354,8 +357,8 @@ class RealTimeDataHandler(DataHandler):
         month = date_obj.strftime('%Y-%m')
         if raw:
             return f'data/real_time/raw/{symbol}_{self.interval_str}_{month}.{file_type}'
-        if rescaled:
-            return f'data/real_time/rescaled/{symbol}_{self.interval_str}_{month}.{file_type}'
+        """if rescaled:
+            return f'data/real_time/rescaled/{symbol}_{self.interval_str}_{month}.{file_type}'"""
         if process:
             return f'data/real_time/processed/{symbol}_{self.interval_str}_{month}.{file_type}'
         else:
@@ -365,8 +368,8 @@ class RealTimeDataHandler(DataHandler):
         # date is dummy here
         if raw:
             return f'data/real_time/raw/{symbol}_{self.interval_str}_{month}.{file_type}'
-        if rescaled:
-            return f'data/real_time/rescaled/{symbol}_{self.interval_str}_{month}.{file_type}'
+        """if rescaled:
+            return f'data/real_time/rescaled/{symbol}_{self.interval_str}_{month}.{file_type}'"""
         if process:
             return f'data/real_time/processed/{symbol}_{self.interval_str}_{month}.{file_type}'
         
@@ -388,10 +391,11 @@ class RealTimeDataHandler(DataHandler):
     def flush_data(self, symbol):
         # Flush old data to disk when memory limit is exceeded
         cleaned_data = pd.concat(list(self.cleaned_data[symbol]), ignore_index=True)
-        rescaled_data = pd.concat(list(self.rescaled_data[symbol]), ignore_index=True)
+
+        # rescaled_data = pd.concat(list(self.rescaled_data[symbol]), ignore_index=True)
 
         self.cleaned_data[symbol].clear()
-        self.rescaled_data[symbol].clear()
+        # self.rescaled_data[symbol].clear()
 
         # Run garbage collection after clearing old data
         gc.collect()
@@ -407,19 +411,19 @@ class RealTimeDataHandler(DataHandler):
         return df_raw
 
 
-    def load_scaler_path(self, symbol, column):
-        """
+    """def load_scaler_path(self, symbol, column):
+        
         Loads the scaler from a pickle file based on the symbol, column, and scaling type.
         :param scaler_dir: Directory where scalers are stored
         :param symbol: The symbol (e.g., ADAUSDT, BTCUSDT)
         :param column: The column for which the scaler is required (e.g., 'open', 'close')
         :param scaling_type: Type of scaler ('minmax' or 'standard'), default is 'minmax'
         :return: The loaded scaler or None if not found
-        """
+        
         scaler_filename = f"{column}_{self.scaler}.pkl"
         scaler_path = os.path.join(self.scaler_dir, symbol ,self.interval_str, scaler_filename)
         
-        return scaler_path
+        return scaler_path"""
     
     def load_last_fetch_time(self):
         """
@@ -502,7 +506,7 @@ class RealTimeDataHandler(DataHandler):
                 self.warning_logger.warning(f"No processed data file found for {symbol} in {processed_file_path}")
 
         # Load rescaled data files into self.rescaled_data
-        for symbol in self.symbols:
+        """for symbol in self.symbols:
             rescaled_file_path = self.file_path_month(symbol=symbol, month=last_month, rescaled=True)
             if os.path.exists(rescaled_file_path):
                 df = pd.read_csv(rescaled_file_path, index_col='open_time', parse_dates=True)
@@ -525,16 +529,16 @@ class RealTimeDataHandler(DataHandler):
                     self.warning_logger.warning(f"Required labels missing in rescaled data file for {symbol} in {rescaled_file_path}")
                     # print("check_required_labels failed for processed data")
             else:
-                self.warning_logger.warning(f"No rescaled data file found for {symbol} in {rescaled_file_path}")
+                self.warning_logger.warning(f"No rescaled data file found for {symbol} in {rescaled_file_path}")"""
 
-    def rescale_data(self, df, symbol):
-        """
+    """def rescale_data(self, df, symbol):
+        
         Rescale the data using the appropriate scaler loaded from the saved pickle files.
         :param df: DataFrame with data to be rescaled
         :param symbol: The symbol (e.g., ADAUSDT, BTCUSDT) for which the data is being rescaled
         :param interval: The interval (e.g., '15m', '1h') to determine which scaler to use
         :return: Rescaled DataFrame
-        """
+        
         if symbol in self.symbols:
             # Define the path to the scalers based on the symbol and interval
             scaler_dir = os.path.join(self.scaler_dir, symbol, self.interval_str)
@@ -553,7 +557,7 @@ class RealTimeDataHandler(DataHandler):
                     else:
                         self.warning_logger.warning(f"Scaler for {col} not found for {symbol} at interval {self.interval_str}. Skipping rescaling.")
         # print("after: ", df)
-        return df
+        return df"""
     
     def save_real_time_data(self, df, symbol, month=None, process=False, raw=False, rescaled=False):
         if month:
@@ -594,8 +598,8 @@ class RealTimeDataHandler(DataHandler):
                 file_to_transfer = self.file_path_month(symbol=symbol, month=month, raw=True)
             elif data_type == 'processed':
                 file_to_transfer = self.file_path_month(symbol=symbol, month=month, process=True)
-            elif data_type == 'rescaled':
-                file_to_transfer = self.file_path_month(symbol=symbol, month=month, rescaled=True)
+            """elif data_type == 'rescaled':
+                file_to_transfer = self.file_path_month(symbol=symbol, month=month, rescaled=True)"""
 
             # Check if the file exists and transfer to historical directory
             if os.path.exists(file_to_transfer):
@@ -612,8 +616,8 @@ class RealTimeDataHandler(DataHandler):
         else:
             return 0 # some file skipped
         
-    def update_scaler(self):
-        """
+    """def update_scaler(self):
+        
         Fetch the most recent data, update the existing scaler, and save the updated scaler.
 
         :param scaler_type: The type of scaler ('minmax' or 'standard').
@@ -630,7 +634,7 @@ class RealTimeDataHandler(DataHandler):
             #         recent_data = self.fetch_klines_with_limit(symbol, self.interval_str, update_frequency)
             #     else:
             #         recent_data = pd.read_csv(recent_data_file)
-        """
+        
         # recent_data_path = os.path.join('data/real_time/processed')
         one_week = timedelta(weeks=1)
         update_frequency = one_week // self.interval
@@ -667,11 +671,11 @@ class RealTimeDataHandler(DataHandler):
                     self.data_logger.info(f"Updated and saved scaler for {symbol} {label}.")
 
             self.data_logger.info(f"Scalers updated for {symbol} with {self.interval_str} data.")
-    
+    """
     def data_fetch_loop(self, next_fetch_time, last_fetch_time):
-        
+        new_data = {}
         self.check_for_new_month()
-        self.check_for_new_week()
+        #self.check_for_new_week()
         for symbol in self.symbols:
             if next_fetch_time <= last_fetch_time:
                 self.data_logger.info(f"Skipping fetch for {symbol} at {next_fetch_time}")
@@ -686,12 +690,14 @@ class RealTimeDataHandler(DataHandler):
             self.append_real_time_data(df_time, symbol, process=True)  
             self.save_real_time_data(df_time, symbol, process=True)
             self.data_logger.info(f"Cleaned and saved processed data for {symbol} at {datetime.now(timezone.utc)}")
+            new_data[symbol] = df_cleaned
 
-            df_rescaled = self.rescale_data(df_cleaned, symbol)
+            """df_rescaled = self.rescale_data(df_cleaned, symbol)
             df_time = df_rescaled.set_index('open_time')
             self.append_real_time_data(df_time, symbol, rescaled=True)
             self.save_real_time_data(df_time, symbol, rescaled=True)
             self.data_logger.info(f"Rescaled and saved rescaled data for {symbol} at {datetime.now(timezone.utc)}")
+            """
 
         if 'df_raw' in locals():
             del df_raw
@@ -708,6 +714,7 @@ class RealTimeDataHandler(DataHandler):
         self.time_logger.info(f"Last fetch time: {next_fetch_time}")
         self.data_logger.info(f"Saved last fetch time: {next_fetch_time}")
         # At the end of the loop for each symbol
+        return new_data
         
         
     def pre_run_data(self):
@@ -743,7 +750,10 @@ class RealTimeDataHandler(DataHandler):
         return next_fetch_time, last_fetch_time
         
     def sample_loop(self, next_fetch_time, last_fetch_time):
-        self.data_fetch_loop(next_fetch_time, last_fetch_time)
+        new_data = self.data_fetch_loop(next_fetch_time, last_fetch_time)
+        self.notify_subscribers(new_data)
+        del new_data
+        gc.collect()
         now = datetime.now(timezone.utc)
         next_fetch_time = self.calculate_next_grid(now)
         sleep_duration = (next_fetch_time - now).total_seconds()
@@ -771,6 +781,18 @@ class RealTimeDataHandler(DataHandler):
 
             time.sleep(sleep_duration)
 
+
+######### For Subscribers #########
+
+    def subscribe(self, subscriber):
+        """Add a new subscriber to the list."""
+        if subscriber not in self.subscribers:
+            self.subscribers.append(subscriber)
+    def unsubscribe(self, subscriber):
+        """Remove a subscriber from the list."""
+        if subscriber in self.subscribers:
+            self.subscribers.remove(subscriber)
+
     def notify_subscribers(self, new_data):
         for subscriber in self.subscribers:
             subscriber.update(new_data)
@@ -778,20 +800,20 @@ class RealTimeDataHandler(DataHandler):
     def get_data(self, symbol, clean=False, rescale=False):
         if clean:
             return self.cleaned_data[symbol]
-        if rescale:
-            return self.rescaled_data[symbol]
+        """if rescale:
+            return self.rescaled_data[symbol]"""
         
     def get_last_data(self, symbol, clean=False, rescale=False):
         if clean:
             return self.cleaned_data[symbol].iloc[-1]
-        if rescale:
-            return self.rescaled_data[symbol].iloc[-1]
+        """if rescale:
+            return self.rescaled_data[symbol].iloc[-1]"""
         
     def get_data_limit(self, symbol, limit, clean=False, rescale=False):
         if clean:
             return self.cleaned_data[symbol].tail(limit)
-        if rescale:
-            return self.rescaled_data[symbol].tail(limit)
+        """if rescale:
+            return self.rescaled_data[symbol].tail(limit)"""
         
 
     """

@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import json
 import sys
+import gc
 import os
 # Add the src directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -85,6 +86,7 @@ class FeatureExtractor:
         self.maximum_history = memorysetting.get("window_size", 100)
 
         self.select_method = settings.get("select_method", "top_n")
+        self.data_handler.subscribe(self)
 
 
 
@@ -223,7 +225,9 @@ class FeatureExtractor:
             trend_df = self.add_trend_indicators(data)
             custom_df = self.add_custom_indicators(data)
             self.indicators[symbol] = pd.concat([momentum_df, volatility_df, volume_df, trend_df, custom_df], axis=1)
-            
+            del momentum_df, volatility_df, volume_df, trend_df, custom_df
+            gc.collect()
+
         if self.select_method == "top_n":
             selector = TopSelector(self.indicators[self.symbols[0]], self.backtest_results)
             self.selections = selector.select_indicators()
@@ -236,7 +240,7 @@ class FeatureExtractor:
         elif self.select_method == "volatility":
             selector = VolatilityBasedSelector(self.indicators[self.symbols[0]])
             self.selections = selector.select_indicators()
-        else:
+        else: # no selection method specified
             self.selections = self.indicators[self.symbols[0]].columns.tolist()
         for symbol in self.symbols:
             self.indicators[symbol] = self.indicators[symbol][self.selections]
@@ -245,15 +249,17 @@ class FeatureExtractor:
 
 
 ############## Real-time update functions #################
-    def update_indicators(self, new_data):
+    def update(self, new_data):
+
         new_datetime = new_data.pop('datetime')
         for symbol in self.symbols:
+            data_symbol = new_data[symbol]
             new_row = pd.DataFrame({col: 0 for col in self.indicators[symbol].columns}, index=[new_datetime])
             self.indicators[symbol] = pd.concat([self.indicators[symbol], new_row])
-            self.update_mom_indicators(symbol, new_datetime, new_data)
-            self.update_vol_indicators(symbol, new_datetime)
-            self.update_trend_indicators(symbol, new_datetime)
-            self.update_custom_indicators(symbol, new_datetime)
+            self.update_mom_indicators(symbol, new_datetime, data_symbol)
+            self.update_vol_indicators(symbol, new_datetime, data_symbol)
+            self.update_trend_indicators(symbol, new_datetime, data_symbol)
+            self.update_custom_indicators(symbol, new_datetime, data_symbol)
 
 
     def update_mom_indicators(self, symbol, new_datetime, data):
@@ -281,15 +287,67 @@ class FeatureExtractor:
             self.indicators[symbol].at[new_datetime, 'stoch_d'] = updated_stochastic['stoch_d']
 
                 
-    def update_vol_indicators(self, symbol, new_datetime):
-        pass
+    def update_vol_indicators(self, symbol, new_datetime, data):
+        """
+        Updates volatility indicators (Bollinger Bands, ATR) using the last calculated values and the new price data.
+        
+        :param symbol: The trading symbol to update.
+        :param new_datetime: The timestamp of the new data.
+        :param data: The latest data, containing 'close', 'high', 'low'.
+        """
+        # Update Bollinger Bands
+        if 'bollinger_mavg' in self.indicators[symbol].columns:
+            prev_bollinger = {
+                'sma': self.indicators[symbol]['bollinger_mavg'].iloc[-2],
+                'stddev': (self.indicators[symbol]['bollinger_upper'].iloc[-2] - self.indicators[symbol]['bollinger_mavg'].iloc[-2]) / 2
+            }
+            new_close = data['close']
+            updated_bollinger = self.update_bollinger_bands(prev_bollinger, new_close)
+            self.indicators[symbol].at[new_datetime, 'bollinger_mavg'] = updated_bollinger['sma']
+            self.indicators[symbol].at[new_datetime, 'bollinger_upper'] = updated_bollinger['upper_band']
+            self.indicators[symbol].at[new_datetime, 'bollinger_lower'] = updated_bollinger['lower_band']
+        
+        # Update ATR
+        if 'atr' in self.indicators[symbol].columns:
+            prev_atr = {
+                'atr': self.indicators[symbol]['atr'].iloc[-2],
+                'prev_close': self.indicators[symbol]['close'].iloc[-2]
+            }
+            updated_atr = self.update_atr(prev_atr, data['high'], data['low'], data['close'])
+            self.indicators[symbol].at[new_datetime, 'atr'] = updated_atr['atr']
 
-    def update_trend_indicators(self, symbol, new_datetime):
-        pass
 
+    def update_trend_indicators(self, symbol, new_datetime, data):
+        """
+        Updates trend-based indicators (SMA, EMA, ADX) using the last calculated values and the new price data.
+
+        :param symbol: The trading symbol to update.
+        :param new_datetime: The timestamp of the new data.
+        :param data: The latest data, containing 'close', 'high', 'low'.
+        """
+        # Update Simple Moving Average (SMA)
+        if 'sma' in self.indicators[symbol].columns:
+            prev_sma = self.indicators[symbol]['sma'].iloc[-2]
+            new_close = data['close']
+            updated_sma = self.update_sma(prev_sma, new_close)
+            self.indicators[symbol].at[new_datetime, 'sma'] = updated_sma
+
+        # Update Exponential Moving Average (EMA)
+        if 'ema' in self.indicators[symbol].columns:
+            prev_ema = self.indicators[symbol]['ema'].iloc[-2]
+            new_close = data['close']
+            updated_ema = self.update_ema(prev_ema, new_close)
+            self.indicators[symbol].at[new_datetime, 'ema'] = updated_ema
+
+        # Update Average Directional Index (ADX)
+        if 'adx' in self.indicators[symbol].columns:
+            prev_adx = self.indicators[symbol]['adx'].iloc[-2]
+            updated_adx = self.update_adx(symbol, prev_adx, data)
+            self.indicators[symbol].at[new_datetime, 'adx'] = updated_adx
+    
     def update_custom_indicators(self, symbol, new_datetime):
         pass
-
+############## Momentum Indicator Functions #################
     def update_rsi(self, symbol):
         """
         Updates the RSI for the given symbol using the last calculated values and the new closing price.
@@ -365,3 +423,100 @@ class FeatureExtractor:
             'stoch_k': stoch_k,
             'stoch_d': stoch_d
         }
+############## Volatility Indicator Functions #################
+    def update_bollinger_bands(self, prev_bollinger, new_close):
+        """
+        Updates Bollinger Bands using the last moving average and standard deviation.
+        
+        :param prev_bollinger: Dictionary containing the last simple moving average and standard deviation.
+        :param new_close: Latest closing price.
+        :return: Updated Bollinger Bands values.
+        """
+        # Update the moving average (SMA)
+        sma = (prev_bollinger['sma'] * (self.bollinger_period - 1) + new_close) / self.bollinger_period
+
+        # Update the rolling standard deviation (stddev)
+        variance = ((prev_bollinger['stddev'] ** 2) * (self.bollinger_period - 1) +
+                    (new_close - sma) ** 2) / self.bollinger_period
+        stddev = np.sqrt(variance)
+
+        # Calculate Bollinger Bands
+        upper_band = sma + (2 * stddev)
+        lower_band = sma - (2 * stddev)
+
+        return {
+            'sma': sma,
+            'stddev': stddev,
+            'upper_band': upper_band,
+            'lower_band': lower_band
+        }
+
+    def update_atr(self, prev_atr, new_high, new_low, new_close):
+        """
+        Updates the Average True Range (ATR) using the last ATR value and the new high, low, and close prices.
+        
+        :param prev_atr: Dictionary containing the last ATR and previous closing price.
+        :param new_high: Latest high price.
+        :param new_low: Latest low price.
+        :param new_close: Latest closing price.
+        :return: Updated ATR value.
+        """
+        # Calculate the new True Range (TR)
+        tr = max(new_high - new_low, abs(new_high - prev_atr['prev_close']), abs(new_low - prev_atr['prev_close']))
+
+        # Update the ATR using the exponential moving average formula
+        new_atr = (prev_atr['atr'] * (self.atr_period - 1) + tr) / self.atr_period
+
+        return {
+            'atr': new_atr,
+            'prev_close': new_close
+        }
+
+    ############## Trend Indicator Functions #################
+    def update_sma(self, prev_sma, new_close):
+        """
+        Updates the Simple Moving Average (SMA) using the previous SMA and new closing price.
+
+        :param prev_sma: The last calculated SMA value.
+        :param new_close: The latest closing price.
+        :return: Updated SMA value.
+        """
+        updated_sma = (prev_sma * (self.sma_period - 1) + new_close) / self.sma_period
+        return updated_sma
+
+    def update_ema(self, prev_ema, new_close):
+        """
+        Updates the Exponential Moving Average (EMA) using the previous EMA and new closing price.
+
+        :param prev_ema: The last calculated EMA value.
+        :param new_close: The latest closing price.
+        :return: Updated EMA value.
+        """
+        alpha = 2 / (self.ema_period + 1)
+        updated_ema = (new_close - prev_ema) * alpha + prev_ema
+        return updated_ema
+
+    def update_adx(self, symbol, prev_adx, data):
+        """
+        Updates the Average Directional Index (ADX) using the previous ADX and new high, low, close prices.
+
+        :param symbol: The trading symbol.
+        :param prev_adx: The last calculated ADX value.
+        :param data: Latest data, containing 'high', 'low', 'close'.
+        :return: Updated ADX value.
+        """
+        # Retrieve the previous data points for the indicator calculation
+        last_data = self.data_handler.get_data_limit(symbol, self.adx_period + 1, clean=True)
+
+        if len(last_data) < self.adx_period + 1:
+            raise ValueError(f"Not enough data to update ADX for {symbol}. Requires at least {self.adx_period + 1} data points.")
+
+        # Using ta-lib to calculate ADX for the current data
+        adx = ta.trend.ADXIndicator(
+            high=last_data['high'], 
+            low=last_data['low'], 
+            close=last_data['close'], 
+            window=self.adx_period
+        ).adx().iloc[-1]  # Get the most recent ADX value
+
+        return adx

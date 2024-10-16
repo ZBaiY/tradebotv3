@@ -1,5 +1,5 @@
 RealTimeDataHandlers updates
-
+The rescaled data is no longer handled by realtimedatahandler
 add """
     Each subscriber (e.g., Feature, SignalProcessing, Model) will register with RealTimeDataHandler, 
     allowing the data handler to notify them when new data is available. 

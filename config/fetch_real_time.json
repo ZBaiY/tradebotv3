@@ -1,8 +1,6 @@
 {
     "interval": "1m",
     "file_type": "csv",
-    "scaler": "standard",
-    "historical_path":"data/historical/for_scaler", 
     "symbols": ["ETHUSDT", "BTCUSDT"],
     "retry_if_error": 5,
     "memory_setting": {
