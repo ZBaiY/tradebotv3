@@ -49,26 +49,27 @@ class FeatureExtractor:
         """
         # Load settings from the JSON file
         # Load settings for momentum indicators
-        self.rsi_period = self.settings.get("rsi_period", 14)  # Default RSI period is 14
-        self.macd_short = self.settings.get("macd_short", 12)  # MACD short period
+        self.rsi_period = self.settings.get("rsi_period", None)  # Default RSI period is 14
+        self.macd_short = self.settings.get("macd_short", None)  # MACD short period
         self.macd_long = self.settings.get("macd_long", 26)    # MACD long period
         self.macd_signal = self.settings.get("macd_signal", 9) # MACD signal period
-        self.stoch_period = self.settings.get("stoch_period", 14)  # Stochastic Oscillator period
+        self.stoch_period = self.settings.get("stoch_period", None)  # Stochastic Oscillator period
         self.stoch_smooth_k = self.settings.get("stoch_smooth_k", 3) # %K smoothing for Stochastic Oscillator
         self.stoch_smooth_d = self.settings.get("stoch_smooth_d", 3) # %D smoothing for Stochastic Oscillator
         
-         # Load settings for volatility indicators
-        self.bollinger_period = self.settings.get("bollinger_period", 20)  # Default Bollinger Bands period
-        self.atr_period = self.settings.get("atr_period", 14)  # Default ATR period
+        # Load settings for volatility indicators
+        self.bollinger_period = self.settings.get("bollinger_period", None)  # Default Bollinger Bands period
+        self.bollinger_std = self.settings.get("bollinger_std", 2)  # Default Bollinger Bands standard deviation
+        self.atr_period = self.settings.get("atr_period", None)  # Default ATR period
 
         # Load settings for volume indicators
-        self.vwap_period = self.settings.get("vwap_period", 14)  # Default VWAP period
-        self.obv_lookback = self.settings.get("obv_lookback", 100)
+        self.vwap_period = self.settings.get("vwap_period", None)  # Default VWAP period
+        self.obv_lookback = self.settings.get("obv_lookback", None)
 
         # Load settings for trend indicators
-        self.sma_period = self.settings.get("sma_period", 20)
-        self.ema_period = self.settings.get("ema_period", 14)
-        self.adx_period = self.settings.get("adx_period", 14)
+        self.sma_period = self.settings.get("sma_period", None)
+        self.ema_period = self.settings.get("ema_period", None)
+        self.adx_period = self.settings.get("adx_period", None)
 
         # Load settings for custom indicators
         self.custom_indicator_param = self.settings.get("custom_indicator_param", 5)
@@ -99,32 +100,36 @@ class FeatureExtractor:
         """
         # Create an empty DataFrame with the same index as the original data
         momentum_df = pd.DataFrame(index=data.index)
-
+        if self.rsi_period is not None:
         # Add RSI to the new DataFrame
-        momentum_df['rsi'] = ta.momentum.RSIIndicator(
-            close=data['close'], window=self.rsi_period).rsi()
+            momentum_df['rsi'] = ta.momentum.RSIIndicator(
+                close=data['close'], window=self.rsi_period).rsi()
 
         # Add MACD (Moving Average Convergence Divergence)
-        macd = ta.trend.MACD(
-            close=data['close'],
-            window_slow=self.macd_long,
-            window_fast=self.macd_short,
-            window_sign=self.macd_signal
-        )
-        momentum_df['macd'] = macd.macd()
-        momentum_df['macd_signal'] = macd.macd_signal()
-        momentum_df['macd_diff'] = macd.macd_diff()
+        if self.macd_short is not None:
+            macd = ta.trend.MACD(
+                close=data['close'],
+                window_slow=self.macd_long,
+                window_fast=self.macd_short,
+                window_sign=self.macd_signal
+            )
+            ###### It looks like MACD line need four columns, not economic ########
+            momentum_df['macd'] = macd.macd()
+            momentum_df['macd_signal'] = macd.macd_signal()
+            momentum_df['macd_diff'] = macd.macd_diff()
+            momentum_df['macd_long_ema'] = ta.trend.EMAIndicator(close=data['close'], window=self.macd_long).ema_indicator()
 
         # Add Stochastic Oscillator
-        stochastic = ta.momentum.StochasticOscillator(
-            high=data['high'], 
-            low=data['low'], 
-            close=data['close'], 
-            window=self.stoch_period, 
-            smooth_window=self.stoch_smooth_k
-        )
-        momentum_df['stoch_k'] = stochastic.stoch()
-        momentum_df['stoch_d'] = stochastic.stoch_signal()
+        if self.stoch_period is not None:
+            stochastic = ta.momentum.StochasticOscillator(
+                high=data['high'], 
+                low=data['low'], 
+                close=data['close'], 
+                window=self.stoch_period, 
+                smooth_window=self.stoch_smooth_k
+            )
+            momentum_df['stoch_k'] = stochastic.stoch()
+            momentum_df['stoch_d'] = stochastic.stoch_signal()
 
         if len(momentum_df) > self.maximum_history:
             momentum_df = momentum_df.iloc[-self.maximum_history:]
@@ -137,19 +142,21 @@ class FeatureExtractor:
         """
         # Create a new DataFrame for volatility indicators
         volatility_df = pd.DataFrame(index=data.index)
-        
-        # Bollinger Bands
-        bollinger = ta.volatility.BollingerBands(close=data['close'], window=self.bollinger_period)
-        volatility_df['bollinger_mavg'] = bollinger.bollinger_mavg()
-        volatility_df['bollinger_upper'] = bollinger.bollinger_hband()
-        volatility_df['bollinger_lower'] = bollinger.bollinger_lband()
-        
-        
-        # Average True Range (ATR)
-        volatility_df['atr'] = ta.volatility.AverageTrueRange(
-            high=data['high'], low=data['low'], close=data['close'], window=self.atr_period
-        ).average_true_range()
-        
+        if self.bollinger_period is not None:
+            # Bollinger Bands
+            bollinger = ta.volatility.BollingerBands(close=data['close'], window=self.bollinger_period, window_dev=self.bollinger_std)
+            volatility_df['bollinger_mavg'] = bollinger.bollinger_mavg() # Middle band (SMA)
+            volatility_df['bollinger_upper'] = bollinger.bollinger_hband()
+            volatility_df['bollinger_lower'] = bollinger.bollinger_lband()
+            
+        if self.atr_period is not None:
+            # Average True Range (ATR)
+            volatility_df['atr'] = ta.volatility.AverageTrueRange(
+                high=data['high'], low=data['low'], close=data['close'], window=self.atr_period
+            ).average_true_range()
+        if len(volatility_df) > self.maximum_history:
+            volatility_df = volatility_df.tail(self.maximum_history)
+
         return volatility_df
     
     def add_volume_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -158,17 +165,17 @@ class FeatureExtractor:
         """
         # Create a new DataFrame for volume indicators
         volume_df = pd.DataFrame(index=data.index)
-        
-        # VWAP (Volume Weighted Average Price)
-        volume_df['vwap'] = ta.volume.VolumeWeightedAveragePrice(
-            high=data['high'], low=data['low'], close=data['close'], volume=data['volume'], 
-            window=self.vwap_period  # If VWAP needs a custom period
-        ).volume_weighted_average_price()
-
-        # On-Balance Volume (OBV)
-        volume_df['obv'] = ta.volume.OnBalanceVolumeIndicator(
-            close=data['close'], volume=data['volume']
-        ).on_balance_volume()
+        if self.vwap_period is not None:
+            # VWAP (Volume Weighted Average Price)
+            volume_df['vwap'] = ta.volume.VolumeWeightedAveragePrice(
+                high=data['high'], low=data['low'], close=data['close'], volume=data['volume'], 
+                window=self.vwap_period  # If VWAP needs a custom period
+            ).volume_weighted_average_price()
+        if self.obv_lookback is not None:
+            # On-Balance Volume (OBV)
+            volume_df['obv'] = ta.volume.OnBalanceVolumeIndicator(
+                close=data['close'], volume=data['volume']
+            ).on_balance_volume()
 
         return volume_df
     
@@ -178,21 +185,23 @@ class FeatureExtractor:
         """
         # Create a new DataFrame for trend indicators
         trend_df = pd.DataFrame(index=data.index)
-
-        # Simple Moving Average (SMA)
-        trend_df['sma'] = ta.trend.SMAIndicator(
-            close=data['close'], window=self.sma_period
-        ).sma_indicator()
-
-        # Exponential Moving Average (EMA)
-        trend_df['ema'] = ta.trend.EMAIndicator(
-            close=data['close'], window=self.ema_period
-        ).ema_indicator()
-
-        # Average Directional Index (ADX)
-        trend_df['adx'] = ta.trend.ADXIndicator(
-            high=data['high'], low=data['low'], close=data['close'], window=self.adx_period
-        ).adx()
+        if self.sma_period is not None:
+            # Simple Moving Average (SMA)
+            trend_df['sma'] = ta.trend.SMAIndicator(
+                close=data['close'], window=self.sma_period
+            ).sma_indicator()
+        if self.ema_period is not None:
+            # Exponential Moving Average (EMA)
+            trend_df['ema'] = ta.trend.EMAIndicator(
+                close=data['close'], window=self.ema_period
+            ).ema_indicator()
+        if self.adx_period is not None:
+            # Average Directional Index (ADX)
+            trend_df['adx'] = ta.trend.ADXIndicator(
+                high=data['high'], low=data['low'], close=data['close'], window=self.adx_period
+            ).adx()
+        if len(trend_df) > self.maximum_history:
+            trend_df = trend_df.tail(self.maximum_history)
 
         return trend_df
     
@@ -267,8 +276,8 @@ class FeatureExtractor:
             self.indicators[symbol].at[new_datetime, 'rsi'] = self.update_rsi(symbol)
         if 'macd' in self.indicators[symbol].columns:
             prev_macd = {
-                'short_ema': self.indicators[symbol]['macd'].iloc[-2],
-                'long_ema': self.indicators[symbol]['macd'].iloc[-2],
+                'short_ema': self.indicators[symbol]['long_ema'].iloc[-2]-self.indicators[symbol]['macd'].iloc[-2],
+                'long_ema': self.indicators[symbol]['macd_long_ema'].iloc[-2],
                 'macd_signal': self.indicators[symbol]['macd_signal'].iloc[-2]
             }
             new_close = data['close']
@@ -276,15 +285,22 @@ class FeatureExtractor:
             self.indicators[symbol].at[new_datetime, 'macd'] = updated_macd['macd_value']
             self.indicators[symbol].at[new_datetime, 'macd_signal'] = updated_macd['macd_signal']
             self.indicators[symbol].at[new_datetime, 'macd_diff'] = updated_macd['macd_diff']
+            self.indicators[symbol].at[new_datetime, 'macd_long_ema'] = updated_macd['long_ema']
+
         if 'stoch_k' in self.indicators[symbol].columns and 'stoch_d' in self.indicators[symbol].columns:
             prev_stochastic = {
-                'highest_high': self.indicators[symbol]['stoch_k'].iloc[-2],
-                'lowest_low': self.indicators[symbol]['stoch_k'].iloc[-2],
-                'stoch_d': self.indicators[symbol]['stoch_d'].iloc[-2]
+                'highest_high': self.indicators[symbol]['lookback_high'].iloc[-2],
+                'lowest_low': self.indicators[symbol]['lookback_low'].iloc[-2],
+                'stoch_d': self.indicators[symbol]['stoch_d'].iloc[-2],
             }
-            updated_stochastic = self.update_stochastic(prev_stochastic, data)
+            updated_stochastic = self.update_stochastic(
+                prev_stochastic, data
+            )
+            # Update the momentum_df with the new stoch_k and stoch_d values
             self.indicators[symbol].at[new_datetime, 'stoch_k'] = updated_stochastic['stoch_k']
             self.indicators[symbol].at[new_datetime, 'stoch_d'] = updated_stochastic['stoch_d']
+            self.indicators[symbol].at[new_datetime, 'lookback_high'] = updated_stochastic['highest_high']
+            self.indicators[symbol].at[new_datetime, 'lookback_low'] = updated_stochastic['lowest_low']
 
                 
     def update_vol_indicators(self, symbol, new_datetime, data):
@@ -298,8 +314,8 @@ class FeatureExtractor:
         # Update Bollinger Bands
         if 'bollinger_mavg' in self.indicators[symbol].columns:
             prev_bollinger = {
-                'sma': self.indicators[symbol]['bollinger_mavg'].iloc[-2],
-                'stddev': (self.indicators[symbol]['bollinger_upper'].iloc[-2] - self.indicators[symbol]['bollinger_mavg'].iloc[-2]) / 2
+                'sma': self.indicators[symbol]['bollinger_mavg'].iloc[-2], # Middle band (SMA)
+                'stddev': (self.indicators[symbol]['bollinger_upper'].iloc[-2] - self.indicators[symbol]['bollinger_mavg'].iloc[-2]) / self.bollinger_std
             }
             new_close = data['close']
             updated_bollinger = self.update_bollinger_bands(prev_bollinger, new_close)
@@ -342,39 +358,42 @@ class FeatureExtractor:
         # Update Average Directional Index (ADX)
         if 'adx' in self.indicators[symbol].columns:
             prev_adx = self.indicators[symbol]['adx'].iloc[-2]
-            updated_adx = self.update_adx(symbol, prev_adx, data)
+            prev_data = self.data_handler.get_data_limit(symbol, 2, clean=True)[-2]
+            prev_high = prev_data['high']
+            prev_low = prev_data['low']
+            prev_close = prev_data['close']
+            current_high = data['high']
+            current_low = data['low']
+            updated_adx = self.update_adx(prev_high, prev_low, prev_close, current_high, current_low, prev_adx)
             self.indicators[symbol].at[new_datetime, 'adx'] = updated_adx
     
     def update_custom_indicators(self, symbol, new_datetime):
         pass
 ############## Momentum Indicator Functions #################
-    def update_rsi(self, symbol):
-        """
-        Updates the RSI for the given symbol using the last calculated values and the new closing price.
+    def update_rsi(self, prev_rsi, new_close):
+        # Calculate the new gain or loss
+        new_diff = new_close - prev_rsi['previous_close']
+        gain = max(new_diff, 0)
+        loss = abs(min(new_diff, 0))
 
-        :param symbol: The trading symbol to update the RSI for.
-        :return: Updated RSI value for the symbol.
-        """
-        data_window = self.data_handler.get_data_limit(symbol, self.rsi_period + 1, clean=True)
+        # Incrementally update the average gain and average loss
+        avg_gain = (prev_rsi['avg_gain'] * (self.rsi_period - 1) + gain) / self.rsi_period
+        avg_loss = (prev_rsi['avg_loss'] * (self.rsi_period - 1) + loss) / self.rsi_period
 
-        if len(data_window) < self.rsi_period + 1:
-            raise ValueError(f"Not enough data to update RSI for {symbol}. Requires at least {self.rsi_period + 1} data points.")
-
-        close_diff = data_window['close'].diff().dropna()
-        gains = close_diff.clip(lower=0)
-        losses = -close_diff.clip(upper=0)
-        avg_gain = gains.mean()
-        avg_loss = losses.mean()
-
-        # Calculate the Relative Strength (RS)
+        # Calculate the updated RSI value
         if avg_loss == 0:
             rs = np.inf
         else:
             rs = avg_gain / avg_loss
-        # Calculate the new RSI value
-        new_rsi = 100 - (100 / (1 + rs))
 
-        return new_rsi
+        rsi = 100 - (100 / (1 + rs))
+
+        return {
+            'rsi_value': rsi,
+            'avg_gain': avg_gain,
+            'avg_loss': avg_loss,
+            'previous_close': new_close
+        }
 
     def update_macd(self, prev_macd, new_close):
         """
@@ -496,7 +515,7 @@ class FeatureExtractor:
         updated_ema = (new_close - prev_ema) * alpha + prev_ema
         return updated_ema
 
-    def update_adx(self, symbol, prev_adx, data):
+    def update_adx(self, prev_high, prev_low, prev_close, current_high, current_low, prev_adx):
         """
         Updates the Average Directional Index (ADX) using the previous ADX and new high, low, close prices.
 
@@ -506,17 +525,17 @@ class FeatureExtractor:
         :return: Updated ADX value.
         """
         # Retrieve the previous data points for the indicator calculation
-        last_data = self.data_handler.get_data_limit(symbol, self.adx_period + 1, clean=True)
-
-        if len(last_data) < self.adx_period + 1:
-            raise ValueError(f"Not enough data to update ADX for {symbol}. Requires at least {self.adx_period + 1} data points.")
-
+        tr = max(current_high - current_low, abs(current_high - prev_close), abs(current_low - prev_close))
+        # Step 2: Calculate +DM and -DM
+        up_move = current_high - prev_high
+        down_move = prev_low - current_low
+        plus_dm = up_move if up_move > down_move and up_move > 0 else 0
+        minus_dm = down_move if down_move > up_move and down_move > 0 else 0
+        # Step 3: Calculate +DI and -DI (Directional Indicators)
+        plus_di = (plus_dm / tr) * 100 if tr != 0 else 0
+        minus_di = (minus_dm / tr) * 100 if tr != 0 else 0
         # Using ta-lib to calculate ADX for the current data
-        adx = ta.trend.ADXIndicator(
-            high=last_data['high'], 
-            low=last_data['low'], 
-            close=last_data['close'], 
-            window=self.adx_period
-        ).adx().iloc[-1]  # Get the most recent ADX value
+        dx = abs(plus_di - minus_di) / (plus_di + minus_di) * 100 if (plus_di + minus_di) != 0 else 0
+        adx = ((prev_adx * (self.adx_period - 1)) + dx) / self.adx_period
 
         return adx

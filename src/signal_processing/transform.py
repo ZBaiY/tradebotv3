@@ -2,84 +2,86 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-class TransformerBase:
-    def __init__(self, symbols=None):
-        self.symbols = symbols
+"""Transformers here won't bring NaN values, unlike filters which may filter out some entries."""
 
+class TransformerBase:
+    def __init__(self):
+        pass
     def transform(self, data):
         """Transform method to be overridden by subclasses."""
         raise NotImplementedError("This method should be overridden by subclasses.")
 
 class ReturnTransformer(TransformerBase):
-    def __init__(self, symbols=None):
-        super().__init__(symbols)
+    def __init__(self):
+        super().__init__()
+        self.lookback = 2
 
     def transform(self, data):
         """Transform price data into simple returns."""
-        result = {}
-        for symbol in self.symbols:
-            data_copy = data[symbol].copy()
-            data_copy = data_copy.pct_change().fillna(0)
-            result[symbol] = data_copy
-        return result
+        data_copy = data.copy()
+        data_copy = data_copy.pct_change().fillna(0)
+        return data_copy
 
 class LogReturnTransformer(TransformerBase):
-    def __init__(self, symbols=None):
-        super().__init__(symbols)
+    def __init__(self):
+        super().__init__()
+        self.lookback = 2 # need two data points for log return update
 
     def transform(self, data):
         """Transform price data into log returns."""
         result = {}
-        for symbol in self.symbols:
-            data_copy = data[symbol].copy()
-            data_copy = np.log(data_copy / data_copy.shift(1)).fillna(0)
-            result[symbol] = data_copy
+        data_copy = data.copy()
+        data_copy = np.log(data_copy / data_copy.shift(1)).fillna(0)
+        result = data_copy
         return result
-    def on_new_data(self, new_data):
+    def on_new_data(self, two_data):
         """Transform the new data."""
-        return np.log(new_data / new_data.shift(1)).fillna(0)
+        if len(two_data) < 2:
+            raise ValueError("Input data must contain at least two data points.")
+        log_return = np.log(two_data / two_data.shift(1)).fillna(0)
+        return log_return.iloc[1]
 
 class FourierTransformer(TransformerBase):
-    def __init__(self, symbols=None):
-        super().__init__(symbols)
+    def __init__(self):
+        super().__init__()
+        self.lookback = 'all'
         
     def transform(self, data):
         """Apply Fourier Transform (FFT) to the data."""
-        result = {}
-        for symbol in self.symbols:
-            data_copy = data[symbol].copy()
-            if isinstance(data_copy, pd.DataFrame) or isinstance(data_copy, pd.Series):
-                # Drop NaN values as FFT does not handle them
-                data_cleaned = data_copy.dropna()
-                fft_result = np.fft.fft(data_cleaned)
-                result[symbol] = pd.Series(fft_result, index=range(len(fft_result)))
-            else:
-                if np.isnan(data_copy).any():
-                    raise ValueError(f"Data for symbol {symbol} contains NaN values.")
-                fft_result = np.fft.fft(data_copy)
-                result[symbol] = pd.Series(fft_result, index=range(len(fft_result)))
-                result[symbol] = fft_result
-        return result
+        data_copy = data.copy()
+        if isinstance(data_copy, pd.DataFrame) or isinstance(data_copy, pd.Series):
+            # Drop NaN values as FFT does not handle them
+            data_cleaned = data_copy.dropna()
+            if len(data_cleaned) == 0:
+                raise ValueError("No valid data points after dropping NaN values.")
+            fft_result = np.fft.fft(data_cleaned)
+            return pd.Series(fft_result, index=range(len(fft_result)))
+        else:
+            # Handle raw numpy arrays or other data formats
+            if np.isnan(data_copy).any():
+                raise ValueError("Data contains NaN values.")
+            fft_result = np.fft.fft(data_copy)
+            return pd.Series(fft_result, index=range(len(fft_result)))
     
     def inverse_transform(self, data):
         """Apply Inverse Fourier Transform (IFFT) to the frequency space data."""
-        result = {}
-        for symbol in self.symbols:
-            data_copy = data[symbol].copy()
-            if isinstance(data_copy, pd.DataFrame) or isinstance(data_copy, pd.Series):
-                data_cleaned = data_copy.dropna()
-                ifft_result = np.fft.ifft(data_cleaned)
-                result[symbol] = pd.Series(ifft_result, index=data_cleaned.index)
-            else:
-                ifft_result = np.fft.ifft(data_copy)
-                result[symbol] = ifft_result
-        return result
+        data_copy = data.copy()
+        if isinstance(data_copy, pd.DataFrame) or isinstance(data_copy, pd.Series):
+            data_cleaned = data_copy.dropna()
+            ifft_result = np.fft.ifft(data_cleaned)
+            return pd.Series(ifft_result, index=range(len(ifft_result)))
+        else:
+            ifft_result = np.fft.ifft(data_copy)
+            return pd.Series(ifft_result, index=range(len(ifft_result)))
+
     
 
-
+### ScalerTranformer Cannot be followed by ReturnTransformer or LogReturnTransformer, because of zeros ########
 class ScalerTransformer(TransformerBase):
     def __init__(self, symbols=None, scaler=None):
-        super().__init__(symbols)
+        super().__init__()
+        self.symbols = symbols
+        self.lookback = 1 # only one data point at a time for updating
         if scaler is None:
             raise ValueError("A scaler object must be provided.")
         elif scaler == 'minmax':
@@ -87,27 +89,23 @@ class ScalerTransformer(TransformerBase):
         elif scaler == 'standard':
             self.scaler = {symbol: StandardScaler() for symbol in symbols}
         
-    def fit_scaler(self, data):
+    def fit_scaler(self, symbol, data):
         """Update the scaler with new data."""
         """Will be used as initilization, as well as for updating the scaler per week."""
-        for symbol in self.symbols:
-            self.scaler[symbol].fit(data[symbol].values.reshape(-1, 1))
+        self.scaler[symbol].fit(data.values.reshape(-1, 1))
 
-    def on_new_data(self, new_data):
+    def on_new_data(self, symbol, new_data):
         """transform the new data."""
-        result = {}
-        for symbol in self.symbols:
-            data_copy = new_data[symbol].copy()
-            result[symbol] = self.scaler[symbol].transform(data_copy.values.reshape(-1, 1))
-        return result
-    def transform(self, data):
+        data_copy = new_data.copy()
+        transformed_data = self.scaler[symbol].transform(data_copy.values.reshape(-1, 1))
+        return pd.DataFrame(transformed_data, index=new_data.index, columns=new_data.columns)
+
+    def transform(self, symbol, data):
         """Apply the scaler to the data."""
-        result = {}
-        for symbol in self.symbols:
-            data_copy = data[symbol].copy()
-            result[symbol] = self.scaler[symbol].transform(data_copy.values.reshape(-1, 1))
-        return result
-    
+        data_copy = data.copy()
+        transformed_data = self.scaler[symbol].transform(data_copy.values.reshape(-1, 1))
+        return pd.DataFrame(transformed_data, index=data.index, columns=data.columns)
+        
 
 
 

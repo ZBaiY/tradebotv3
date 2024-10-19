@@ -17,10 +17,12 @@ class RealtimeDealer:
 
     def start(self):
         self.is_running = True
+        closure = False
         next_fetch_time,last_fetch_time = self.data_handler.pre_run_data()
+
         while self.is_running:
             self.data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
-
+            
             now = datetime.now(timezone.utc)
             next_fetch_time = self.calculate_next_grid(now)
             self.monitor_system_health()  # High-level system checks

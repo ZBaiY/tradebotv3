@@ -279,7 +279,17 @@ class RealTimeDataHandler(DataHandler):
             self.update_scaler()
             self.current_week = new_week"""
 
-
+    def check_new_data(self, new_data):
+        closure = False
+        for symbol in self.symbols:
+            if new_data[symbol].empty:
+                closure = True
+                break
+            elif 'volume' in new_data[symbol].columns and new_data[symbol]['volume'].sum() < 1e-6:
+                closure = True
+                break
+        return closure
+    
     def fetch_missing_data(self, last_fetch_time):
         """
         Fetches missing data between the last fetch time and now.
