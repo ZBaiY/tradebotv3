@@ -6,6 +6,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 from src.data_handling.real_time_data_handler import RealTimeDataHandler
 from src.signal_processing.filters import MovingAverageFilter, ExponentialSmoothingFilter
 from src.signal_processing.transform import ReturnTransformer, LogReturnTransformer, ScalerTransformer, FourierTransformer
+import numpy as np
+# from datetime import datetime, timezone
+# import time
 
 """They only process one column at a time"""
 
@@ -21,25 +24,33 @@ class SignalProcessor:
         self.trans = transform if transform is not None else []
         self.data_handler.subscribe(self)  # Subscribe to the DataHandler
         self.symbols = self.data_handler.symbols
+        self.column = column
         # Initialize the processed data with the cleaned data, it has the same window size as the cleaned data
         self.processed_data = {symbol: self.data_handler.cleaned_data[symbol][column].copy() for symbol in self.symbols}        
         self.lookback = 1
         self.k_space = False
+
+        self.na_num = 0
+        for filter_instance in self.filters:
+            self.na_num += filter_instance.rolling_window-1 
+        self.window_size = self.data_handler.window_size-self.na_num
+
         for filter_instance in self.filters:
             if filter_instance.lookback == 'all':
                 self.lookback = self.window_size
-            else: self.lookback = max(filter_instance.lookback, self.lookback)
+            else: self.lookback = min(max(filter_instance.lookback, self.lookback), self.window_size)
         for trans_instance in self.trans:
             if trans_instance.lookback == 'all':
                 self.lookback = self.window_size
                 if isinstance(trans_instance, FourierTransformer):
                     self.k_space = True
-            self.lookback = max(trans_instance.lookback, self.lookback)
-        self.na_num = 0
-        for filter_instance in self.filters:
-            self.na_num += filter_instance.rooling_window-1 
-        self.window_size = self.data_handler.window_size-self.na_num
-
+            else: self.lookback = min(max(trans_instance.lookback, self.lookback), self.window_size)
+            """if isinstance(trans_instance, ScalerTransformer):
+                for symbol in self.symbols:
+                    trans_instance.fit_scaler(symbol, self.processed_data[symbol])"""
+        
+        
+        
         
     
     def apply_filters(self):
@@ -57,6 +68,11 @@ class SignalProcessor:
             for symbol in self.symbols:
                 if not isinstance(trans_instance, FourierTransformer) and not k_space:
                     recent_timestamps = self.data_handler.cleaned_data[symbol].tail(self.window_size).index
+                    if isinstance(trans_instance, ScalerTransformer):
+                        trans_instance.fit_scaler(symbol, self.processed_data[symbol])
+                        self.processed_data[symbol] = trans_instance.transform(symbol, self.processed_data[symbol])
+                        self.processed_data[symbol] = self.processed_data[symbol].reindex(recent_timestamps)
+                        continue
                     self.processed_data[symbol] = trans_instance.transform(self.processed_data[symbol])
                     self.processed_data[symbol] = self.processed_data[symbol].reindex(recent_timestamps)
                 else:
@@ -67,74 +83,43 @@ class SignalProcessor:
         """First filter the data, then apply transformations."""
         self.apply_filters()
         self.apply_transform()
-
-        print(len(self.processed_data['BTCUSDT']))
-        print(self.window_size)
-
     ####### Real Time Updating Functions ########
 
 
     def update(self, new_data):
-        
-        updated_window = {}
-        for symbol in self.symbols:
-            updated_window[symbol] = self.data_handler.get_data_limit(symbol, self.lookback+self.na_num, clean=True)
-        for filter_instance in self.filters:
-            for symbol in self.symbols:
-                updated_window[symbol] = filter_instance.apply(updated_window[symbol])
-                self.processed_data[symbol] = self.processed_data[symbol].append(updated_window[symbol].iloc[-1]).tail(self.window_size)
+        """Update the processed data with new incoming data."""
+        """In most of cases, incrementally is not possible, due to the stacking of multiple filters and transformers."""
+        self.processed_data = {symbol: self.data_handler.cleaned_data[symbol][self.column].copy() for symbol in self.symbols}   
+        self.apply_filters()
+        self.apply_transform()     
 
 
+"""if __name__ == "__main__":
+    data_handler = RealTimeDataHandler('config/source.json', 'config/fetch_real_time.json')
+    mv_filter = MovingAverageFilter(lookback_size=5)
+    es_filter = ExponentialSmoothingFilter(alpha=0.3)
+    filters = [mv_filter, es_filter]
+    rt_trans = LogReturnTransformer()
+    sclar_trans = ScalerTransformer(symbols=data_handler.symbols, scaler='minmax')
+    fft = FourierTransformer()
+    transform = [rt_trans, sclar_trans,fft]
+    next_fetch_time,last_fetch_time = data_handler.pre_run_data()
+    # for symbol in data_handler.symbols:
+    #     sclar_trans.fit_scaler(symbol, data_handler.cleaned_data[symbol]['close'])
+    # print(data_handler.cleaned_data['BTCUSDT'].head())
+    # # Pause for debugging
+    # print("tap enter to continue...")
+    # input()
+    processors = SignalProcessor(data_handler, 'close', filters=filters, transform=transform)
+    processors.apply_all()
+    is_running = True
+    while is_running:
+        new_data = data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
+        now = datetime.now(timezone.utc)
+        data_handler.notify_subscribers(new_data)
+        next_fetch_time = data_handler.calculate_next_grid(now)
+        print(processors.processed_data['BTCUSDT'].tail())
+        sleep_duration = (next_fetch_time - now).total_seconds()
+        print(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
+        time.sleep(sleep_duration)"""
 
-
-
-
-    """def update_filters(self, new_data, First = True):
-       
-
-        
-        return First
-
-
-    def update_transform(self, new_data , First = True): 
-        
-        Incrementally update the transformations based on new incoming data.
-        Use new_data for efficient updates to avoid recalculating over the entire cleaned_data.
-        
-        :param new_data: dict, new incoming data for each symbol (pd.Series indexed by datetime)
-        
-
-        update_data = {}
-        
-        for trans_instance in self.trans:
-            if First: # if first transformation, we will append new data
-                if isinstance(trans_instance, ReturnTransformer) or isinstance(trans_instance, LogReturnTransformer):
-                    for symbol in self.symbols:
-                        This only updates one entry at a time so we append one and drop the oldest row.
-                        two_data = self.data_handler.get_data_limit(symbol, 2, clean=True)
-                        update_data[symbol] = trans_instance.on_new_data(two_data)
-                        self.processed_data[symbol] = self.processed_data[symbol].append(update_data[symbol]).tail(self.window_size)
-                        
-                    First = False
-
-                elif isinstance(trans_instance, ScalerTransformer):
-                    for symbol in self.symbols:
-                        update_data[symbol] = trans_instance.on_new_data(symbol, new_data[symbol])
-                        self.processed_data[symbol] = self.processed_data[symbol].append(update_data[symbol]).tail(self.window_size)    
-                        
-                    First = False
-
-            else:
-                if isinstance(trans_instance, ReturnTransformer) or isinstance(trans_instance, LogReturnTransformer):
-                    for symbol in self.symbols:
-                        two_data = self.processed_data[symbol].tail(2)
-                        update_data[symbol] = trans_instance.on_new_data(two_data)
-                        self.processed_data[symbol].iat[-1] = update_data[symbol].iloc[-1]
-
-                elif isinstance(trans_instance, ScalerTransformer):
-                    for symbol in self.symbols:
-                        data = self.processed_data[symbol].tail(1)
-                        update_data[symbol] = trans_instance.on_new_data(symbol, data)
-                        self.processed_data[symbol].iat[-1] = update_data[symbol].iloc[-1]"""
-                        
-            

@@ -22,11 +22,11 @@ class MovingAverageFilter(FilterBase):
         data_copy = data_copy.rolling(window=self.rolling_window).mean().dropna()
         return data_copy
     
-    """def on_new_data(self, new_data):
-        data_copy = new_data.copy()
+    """def on_new_data(self, lookback_data):
+        data_copy = lookback_data.copy()
         data_copy = data_copy.rolling(window=self.lookback).mean()
-        return data_copy"""
-
+        return data_copy.iloc[-1]
+    """
 class ExponentialSmoothingFilter(FilterBase):
     def __init__(self, alpha=0.3):
         super().__init__()

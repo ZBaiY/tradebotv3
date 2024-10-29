@@ -21,6 +21,13 @@ class ReturnTransformer(TransformerBase):
         data_copy = data.copy()
         data_copy = data_copy.pct_change().fillna(0)
         return data_copy
+    
+    def on_new_data(self, two_data):
+        """Transform the new data."""
+        if len(two_data) < 2:
+            raise ValueError("Input data must contain at least two data points.")
+        n_return = (two_data / two_data.shift(1) - 1).fillna(0)
+        return n_return.iloc[1]
 
 class LogReturnTransformer(TransformerBase):
     def __init__(self):
@@ -45,16 +52,29 @@ class FourierTransformer(TransformerBase):
     def __init__(self):
         super().__init__()
         self.lookback = 'all'
-        
+        """
+        The result of the Fourier Transform is a series of complex numbers.
+        For a real-valued input signal of length N, the frequencies represented by each index
+        are from 0 up to the Nyquist frequency (the highest frequency that can be represented)
+        which occurs at index N/2
+        Beyond the Nyquist frequency, the frequency mirror the lower half.
+
+        the first half of the FFT result contains the positive frequencies low to high,
+        0Hz(The DC) to N/2 Hz,
+        while the second half contains the negative frequencies, high to low,
+        -N/2+1 Hz to -1 Hz.
+        (no 0Hz/the DC) the result[1:N] is symmetric with result[N+1:2*N-1].
+        """
     def transform(self, data):
         """Apply Fourier Transform (FFT) to the data."""
         data_copy = data.copy()
         if isinstance(data_copy, pd.DataFrame) or isinstance(data_copy, pd.Series):
             # Drop NaN values as FFT does not handle them
             data_cleaned = data_copy.dropna()
+            data_flattened = data_cleaned.values.flatten()
             if len(data_cleaned) == 0:
                 raise ValueError("No valid data points after dropping NaN values.")
-            fft_result = np.fft.fft(data_cleaned)
+            fft_result = np.fft.fft(data_flattened)
             return pd.Series(fft_result, index=range(len(fft_result)))
         else:
             # Handle raw numpy arrays or other data formats
@@ -88,7 +108,7 @@ class ScalerTransformer(TransformerBase):
             self.scaler = {symbol: MinMaxScaler() for symbol in symbols}
         elif scaler == 'standard':
             self.scaler = {symbol: StandardScaler() for symbol in symbols}
-        
+    
     def fit_scaler(self, symbol, data):
         """Update the scaler with new data."""
         """Will be used as initilization, as well as for updating the scaler per week."""
@@ -98,13 +118,13 @@ class ScalerTransformer(TransformerBase):
         """transform the new data."""
         data_copy = new_data.copy()
         transformed_data = self.scaler[symbol].transform(data_copy.values.reshape(-1, 1))
-        return pd.DataFrame(transformed_data, index=new_data.index, columns=new_data.columns)
+        return pd.DataFrame(transformed_data, index=new_data.index)
 
     def transform(self, symbol, data):
         """Apply the scaler to the data."""
         data_copy = data.copy()
         transformed_data = self.scaler[symbol].transform(data_copy.values.reshape(-1, 1))
-        return pd.DataFrame(transformed_data, index=data.index, columns=data.columns)
+        return pd.DataFrame(transformed_data, index=data.index)
         
 
 

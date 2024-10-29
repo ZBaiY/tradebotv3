@@ -10,7 +10,7 @@
     "bollinger_std": 2,
     "atr_period": 14,
     "vwap_period": 14,
-    "obv_lookback": 100,
+    "obv_lookback": 14,
     "sma_period": 20,
     "ema_period": 14,
     "adx_period": 14,
