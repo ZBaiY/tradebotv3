@@ -115,7 +115,12 @@ class DataCleaner:
             'taker_buy_quote_asset_volume', 'ignore'
         ])
         # Do the truncation at the beginning
-        self.df = df.reindex(columns=self.required_labels, fill_value=pd.NaT if 'open_time' in self.required_labels else 0)
+        if 'open_time' in df.columns:
+            # 'open_time' is a column, reindex normally
+            self.df = df.reindex(columns=self.required_labels)
+        else:
+            # 'open_time' is the index, handle accordingly
+            self.df = df.reindex(columns=[col for col in self.required_labels if col != 'open_time'])
         self.datetime_format = kwargs.get('datetime_format', 'ms')
         self.params = kwargs.get('params', {
             "check_labels": True,
@@ -266,7 +271,7 @@ class DataCleaner:
         :return: pd.DataFrame, the cleaned DataFrame
         """
         if self.params.get('check_labels', False):
-            missing_labels = [label for label in self.required_labels if label not in self.df.columns]
+            missing_labels = [label for label in self.required_labels if label not in self.df.columns and label != 'open_time']
             if missing_labels:
                 raise ValueError(f"DataFrame does not have the required labels: {missing_labels}")
 

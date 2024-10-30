@@ -104,9 +104,9 @@ class SignalProcessor:
     fft = FourierTransformer()
     transform = [rt_trans, sclar_trans,fft]
     next_fetch_time,last_fetch_time = data_handler.pre_run_data()
-    # for symbol in data_handler.symbols:
-    #     sclar_trans.fit_scaler(symbol, data_handler.cleaned_data[symbol]['close'])
-    # print(data_handler.cleaned_data['BTCUSDT'].head())
+    # # for symbol in data_handler.symbols:
+    # #     sclar_trans.fit_scaler(symbol, data_handler.cleaned_data[symbol]['close'])
+    # # print(data_handler.cleaned_data['BTCUSDT'].head())
     # # Pause for debugging
     # print("tap enter to continue...")
     # input()

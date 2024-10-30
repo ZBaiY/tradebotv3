@@ -96,3 +96,34 @@ with open('fetch_data.json', 'r') as json_file:
             rescaled = interval_data['rescaled']
             output_file = file_path(symbol, interval, start_date, end_date, raw=raw, rescaled=rescaled, file_type)
             prepare_data_chunks(symbol, interval, start_date, end_date, output_file, limit=limit, rate_limit_delay=rate_limit_delay, file_type)
+
+
+
+
+{
+    "interval": "1m",
+    "file_type": "csv",
+    "symbols": ["ETHUSDT", "BTCUSDT"],
+    "retry_if_error": 5, #### check if the market closed
+    "memory_setting": {
+        "window_size": 40,
+        "memory_limit": 50
+    },
+    "log_setting": {
+        "path": "data/real_time/logs",
+        "file_name1": "data_logs",
+        "file_name2": "time_logs",
+        "file_name3": "memory_logs",
+        "file_name4": "warning_logs",
+        "file_name5": "error_logs"
+    },
+    "params": {
+        "check_labels": true,
+        "dtype": true,
+        "timezome_adjust": false,
+        "utc_offset": 3
+    },
+    "required_labels": [
+        "open_time", "open", "high", "low", "close", "volume"
+    ]
+}

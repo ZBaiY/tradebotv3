@@ -22,13 +22,14 @@ class TopSelector:
 
 
 class CorrelationSelector:
-    def __init__(self, indicator_data):
+    def __init__(self, indicator_data, threshold=0.7):
         """
         :param indicator_data: A DataFrame where each column represents the data of an indicator.
         """
         self.indicator_data = indicator_data
+        self.threshold = threshold
 
-    def select_indicators(self, threshold=0.7):
+    def select_indicators(self):
         """
         Select indicators that have a correlation less than the threshold.
         :param threshold: The maximum allowed correlation between indicators.
@@ -37,7 +38,7 @@ class CorrelationSelector:
         corr_matrix = self.indicator_data.corr()
         selected_indicators = []
         for i, indicator in enumerate(corr_matrix.columns):
-            if not any(np.abs(corr_matrix.iloc[i, :i]) > threshold):
+            if not any(np.abs(corr_matrix.iloc[i, :i]) > self.threshold):
                 selected_indicators.append(indicator)
         return selected_indicators
     

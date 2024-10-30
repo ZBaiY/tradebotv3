@@ -205,11 +205,11 @@ class RealTimeDataHandler(DataHandler):
             if self.cleaned_data[symbol].empty:  # Check if DataFrame is empty
                 self.cleaned_data[symbol] = df
             else:
-                df_cleaned = self.clean_data(df)
-                self.cleaned_data[symbol] = pd.concat([self.cleaned_data[symbol], df_cleaned])
+                #df_cleaned = self.clean_data(df)
+                self.cleaned_data[symbol] = pd.concat([self.cleaned_data[symbol], df])
         if len(self.cleaned_data[symbol]) > self.window_size:
             # Drop the oldest rows to keep only the last `window_size` rows
-            self.cleaned_data[symbol] = self.cleaned_data[symbol].iloc[-self.window_size:]
+            self.cleaned_data[symbol] = self.cleaned_data[symbol].tail(self.window_size)
 
         """
             if rescaled:
@@ -700,8 +700,8 @@ class RealTimeDataHandler(DataHandler):
             self.append_real_time_data(df_time, symbol, process=True)  
             self.save_real_time_data(df_time, symbol, process=True)
             self.data_logger.info(f"Cleaned and saved processed data for {symbol} at {datetime.now(timezone.utc)}")
-            new_data[symbol] = df_cleaned
-
+            new_data[symbol] = df_time
+            #print(symbol, df_time)
             """df_rescaled = self.rescale_data(df_cleaned, symbol)
             df_time = df_rescaled.set_index('open_time')
             self.append_real_time_data(df_time, symbol, rescaled=True)
