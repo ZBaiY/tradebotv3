@@ -7,25 +7,31 @@ The costum selector, need to develop it for next version
 
 ```mermaid
 graph TD
-    subgraph Real-Time Trading Bot
-        A[RealTimeDataHandler] -->|Notifies new data| B[SignalProcessing]
-        A -->|Notifies new data| C[Model]
-        A -->|Notifies new data| D[Feature]
+    %% Real-Time Data Handling
+    A[RealTimeDataHandler]
+    A -->|Provides Data| B[SignalProcessing]
+    A -->|Provides Data| C[Model]
+    A -->|Provides Data| D[Feature Extraction]
+    A -->|Updates health and fetches data| F[RealtimeDealer]
 
-        B -->|Processes signals| E[Strategy]
-        C -->|Produces predictions| E
-        D -->|Extracts features| E
-        E -->|Generates buy/sell signals| F[RealtimeDealer]
-        
-        subgraph Risk Manager
-            D -->|Provides features| G[RiskManager]
-            E -->|Consults| G
-        end
+    %% Model & Signal Processing
+    C -->|Consults signals from| B
 
-        F -->|Monitors system and manages data flow| A
-        A -->|Updates health and fetches data| F
-        C -->|Consults signals| B
+    %% Strategy
+    B -->|Processes signals for| E[Strategy]
+    C -->|Provides predictions to| E
+    D -->|Supplies features to| E
+
+    %% Risk Manager
+    subgraph RiskManagement
+        D -->|Provides features to| G[RiskManager]
+        E -->|Consults| G
     end
-    
-    G -->|Advises on stop loss/take profit| E
-    E -->|Defines position sizing based on risk| F
+
+    %% Strategy Integration with Risk Manager
+    G -->|Advises on risk| E
+
+    %% Trade Execution
+    E -->|Generates buy/sell signals| F
+    F -->|Executes trades based on strategy and risk advice| G
+    F -->|Monitors system and manages data flow| A
