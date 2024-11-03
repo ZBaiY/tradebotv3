@@ -144,6 +144,8 @@ class FeatureExtractor:
             )
             momentum_df['stoch_k'] = stochastic.stoch().bfill().ffill()
             momentum_df['stoch_d'] = stochastic.stoch_signal().bfill().ffill()
+            momentum_hdf['lookback_high'] = data['high'].rolling(window=self.stoch_period).max()
+            momentum_hdf['lookback_low'] = data['low'].rolling(window=self.stoch_period).min()
 
         if len(momentum_df) > self.maximum_history:
             momentum_df = momentum_df.tail(self.maximum_history)
@@ -288,6 +290,7 @@ class FeatureExtractor:
             self.update_mom_indicators(symbol, data_symbol)
             self.update_vol_indicators(symbol, data_symbol)
             self.update_trend_indicators(symbol, data_symbol)
+            self.update_volume_indicators(symbol, data_symbol)
             # self.update_custom_indicators(symbol, new_datetime, data_symbol)
             if len(self.indicators[symbol]) > self.maximum_history:
                 self.indicators[symbol] = self.indicators[symbol].tail(self.maximum_history)
@@ -325,8 +328,8 @@ class FeatureExtractor:
 
         if 'stoch_k' in self.indicators[symbol].columns and 'stoch_d' in self.indicators[symbol].columns:
             prev_stochastic = {
-                'highest_high': self.indicators[symbol]['lookback_high'].iloc[-2],
-                'lowest_low': self.indicators[symbol]['lookback_low'].iloc[-2],
+                'highest_high': self.helpers[symbol]['lookback_high'].iloc[-2],
+                'lowest_low': self.helpers[symbol]['lookback_low'].iloc[-2],
                 'stoch_d': self.indicators[symbol]['stoch_d'].iloc[-2],
             }
             updated_stochastic = self.update_stochastic(
@@ -335,8 +338,8 @@ class FeatureExtractor:
             # Update the momentum_df with the new stoch_k and stoch_d values
             self.indicators[symbol].loc[last_index, 'stoch_k'] = updated_stochastic['stoch_k']
             self.indicators[symbol].loc[last_index, 'stoch_d'] = updated_stochastic['stoch_d']
-            self.indicators[symbol].loc[last_index, 'lookback_high'] = updated_stochastic['highest_high']
-            self.indicators[symbol].loc[last_index, 'lookback_low'] = updated_stochastic['lowest_low']
+            self.helpers[symbol].loc[last_index, 'lookback_high'] = updated_stochastic['highest_high']
+            self.helpers[symbol].loc[last_index, 'lookback_low'] = updated_stochastic['lowest_low']
 
                 
     def update_vol_indicators(self, symbol, data):
@@ -362,13 +365,39 @@ class FeatureExtractor:
         
         # Update ATR
         if 'atr' in self.indicators[symbol].columns:
+            prev_close = self.data_handler.get_data_limit(symbol, 2, clean=True)['close'].iloc[-2]
             prev_atr = {
                 'atr': self.indicators[symbol]['atr'].iloc[-2],
-                'prev_close': self.indicators[symbol]['close'].iloc[-2]
+                'prev_close': prev_close
             }
-            updated_atr = self.update_atr(prev_atr, data['high'], data['low'], data['close'])
+            updated_atr = self.update_atr(prev_atr, data['high'].iloc[0], data['low'].iloc[0], data['close'].iloc[0])
             self.indicators[symbol].loc[last_index, 'atr'] = updated_atr['atr']
+    
+    def update_volume_indicators(self, symbol, data):
+        """
+        Updates volume-based indicators (VWAP, OBV) using the last calculated values and the new price data.
+        
+        :param symbol: The trading symbol to update.
+        :param new_datetime: The timestamp of the new data.
+        :param data: The latest data, containing 'close', 'volume'.
+        """
+        # Update Volume Weighted Average Price (VWAP)
+        last_index = self.indicators[symbol].index[-1]
+        if 'vwap' in self.indicators[symbol].columns:
+            prev_vwap = self.indicators[symbol]['vwap'].iloc[-2]
+            new_close = data['close'].iloc[0]
+            new_volume = data['volume'].iloc[0]
+            updated_vwap = self.update_vwap(prev_vwap, new_close, new_volume)
+            self.indicators[symbol].loc[last_index, 'vwap'] = updated_vwap
 
+        # Update On-Balance Volume (OBV)
+        if 'obv' in self.indicators[symbol].columns:
+            prev_obv = self.indicators[symbol]['obv'].iloc[-2]
+            prev_close = self.data_handler.get_data_limit(symbol, 2, clean=True)['close'].iloc[-2]
+            new_close = data['close'].iloc[0]
+            new_volume = data['volume'].iloc[0]
+            updated_obv = self.update_obv(prev_obv,prev_obv, new_close, new_volume)
+            self.indicators[symbol].loc[last_index, 'obv'] = updated_obv
 
     def update_trend_indicators(self, symbol, data):
         """
@@ -389,19 +418,19 @@ class FeatureExtractor:
         # Update Exponential Moving Average (EMA)
         if 'ema' in self.indicators[symbol].columns:
             prev_ema = self.indicators[symbol]['ema'].iloc[-2]
-            new_close = data['close'].ilco[0]
+            new_close = data['close'].iloc[0]
             updated_ema = self.update_ema(prev_ema, new_close)
             self.indicators[symbol].loc[last_index, 'ema'] = updated_ema
 
         # Update Average Directional Index (ADX)
         if 'adx' in self.indicators[symbol].columns:
             prev_adx = self.indicators[symbol]['adx'].iloc[-2]
-            prev_data = self.data_handler.get_data_limit(symbol, 2, clean=True)[-2]
+            prev_data = self.data_handler.get_data_limit(symbol, 2, clean=True).iloc[-2]
             prev_high = prev_data['high']
             prev_low = prev_data['low']
             prev_close = prev_data['close']
-            current_high = data['high']
-            current_low = data['low']
+            current_high = data['high'].iloc[0]
+            current_low = data['low'].iloc[0]
             updated_adx = self.update_adx(prev_high, prev_low, prev_close, current_high, current_low, prev_adx)
             self.indicators[symbol].loc[last_index, 'adx'] = updated_adx
     
@@ -465,7 +494,7 @@ class FeatureExtractor:
         :return: Updated Stochastic Oscillator values.
         """
         new_high = data['high'].iloc[0]
-        new_low = data['low'].ilco[0]
+        new_low = data['low'].iloc[0]
         new_close = data['close'].iloc[0]
         highest_high = max(prev_stochastic['highest_high'], new_high)
         lowest_low = min(prev_stochastic['lowest_low'], new_low)
@@ -578,6 +607,35 @@ class FeatureExtractor:
         return adx
     
 
+    def update_vwap(self, prev_vwap, new_close, new_volume):
+        """
+        Updates the Volume Weighted Average Price (VWAP) using the previous VWAP, new closing price, and volume.
+
+        :param prev_vwap: The last calculated VWAP value.
+        :param new_close: The latest closing price.
+        :param new_volume: The latest trading volume.
+        :return: Updated VWAP value.
+        """
+        updated_vwap = ((prev_vwap * (self.vwap_period - 1)) + (new_close * new_volume)) / self.vwap_period
+        return updated_vwap
+    
+    def update_obv(self, prev_obv, prev_close, new_close, new_volume):
+        """
+        Updates the On-Balance Volume (OBV) using the previous OBV, new closing price, and volume.
+
+        :param prev_obv: The last calculated OBV value.
+        :param new_close: The latest closing price.
+        :param new_volume: The latest trading volume.
+        :return: Updated OBV value.
+        """
+        if new_close > prev_close:
+            updated_obv = prev_obv + new_volume
+        elif new_close < prev_close:
+            updated_obv = prev_obv - new_volume
+        else:
+            updated_obv = prev_obv
+        return updated_obv
+
 
 if __name__ == "__main__":
     data_handler = RealTimeDataHandler('config/source.json', 'config/fetch_real_time.json')
@@ -588,12 +646,12 @@ if __name__ == "__main__":
     is_running = True
     while is_running:
         new_data = data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
-        print(new_data)
-        input("Press Enter to continue...")
+        # print(new_data)
+        # input("Press Enter to continue...")
         now = datetime.now(timezone.utc)
         data_handler.notify_subscribers(new_data)
         next_fetch_time = data_handler.calculate_next_grid(now)
-        print(ft_ext.indicators['BTCUSDT'].tail())
+        # print(ft_ext.indicators['BTCUSDT'].tail())
         sleep_duration = (next_fetch_time - now).total_seconds()+1 # Add 1 second to avoid fetching data too early, total seconds rounds down
-        print(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
+        # print(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
         time.sleep(sleep_duration)

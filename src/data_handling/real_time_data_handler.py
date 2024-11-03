@@ -492,8 +492,8 @@ class RealTimeDataHandler(DataHandler):
             processed_file_path = self.file_path_month(symbol=symbol, month=last_month, process=True)
             if os.path.exists(processed_file_path):
                 df = pd.read_csv(processed_file_path, index_col='open_time', parse_dates=True)
-                print(df.index.values)
-                input("LastMonth, Press Enter to continue...")
+                # print(df.index.values)
+                # input("LastMonth, Press Enter to continue...")
                 if check_required_labels(df, required_labels):
                     self.data_logger.info(f"Loading processed data for {symbol} from {processed_file_path}")
                     self.append_real_time_data(df, symbol, process=True)

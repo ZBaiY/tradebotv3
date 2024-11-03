@@ -11,13 +11,21 @@ graph TD
         A[RealTimeDataHandler] -->|Notifies new data| B[SignalProcessing]
         A -->|Notifies new data| C[Model]
         A -->|Notifies new data| D[Feature]
-        
+
         B -->|Processes signals| E[Strategy]
         C -->|Produces predictions| E
         D -->|Extracts features| E
-
         E -->|Generates buy/sell signals| F[RealtimeDealer]
+        
+        subgraph Risk Manager
+            D -->|Provides features| G[RiskManager]
+            E -->|Consults| G
+        end
+
+        F -->|Monitors system and manages data flow| A
         A -->|Updates health and fetches data| F
+        C -->|Consults signals| B
     end
     
-    F -->|Monitors system and manages data flow| A
+    G -->|Advises on stop loss/take profit| E
+    E -->|Defines position sizing based on risk| F
