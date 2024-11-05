@@ -12,6 +12,14 @@ import numpy as np
 
 """They only process one column at a time"""
 
+
+"""
+SignalProcessor class to process data signals.
+And Store the processed data in the same format as the cleaned data.
+The NoMemSignalProcessor is a class that does not store the processed data
+but only returns it.
+Remember to load the data_handler with the cleaned data before using the SignalProcessor.
+"""
 class SignalProcessor:
     def __init__(self, data_handler, column, filters=None, transform=None):
         """
@@ -19,10 +27,14 @@ class SignalProcessor:
         :filter: list, a list of filters to apply to the data, in order
         :transform: list, a list of transformations to apply to the data, in order
         """
+        if self.data_handler.window_size is None:
+            print("Please load the data handler with the cleaned data before using the SignalProcessor")
+            raise Exception("Data handler not loaded")
         self.data_handler = data_handler
         self.filters = filters if filters is not None else []
         self.trans = transform if transform is not None else []
-        self.data_handler.subscribe(self)  # Subscribe to the DataHandler
+        if isinstance(data_handler, RealTimeDataHandler):
+            self.data_handler.subscribe(self)  # Subscribe to the DataHandler
         self.symbols = self.data_handler.symbols
         self.column = column
         # Initialize the processed data with the cleaned data, it has the same window size as the cleaned data
@@ -92,6 +104,92 @@ class SignalProcessor:
         self.processed_data = {symbol: self.data_handler.cleaned_data[symbol][self.column].copy() for symbol in self.symbols}   
         self.apply_filters()
         self.apply_transform()     
+
+
+
+
+class NonMemSignalProcessor:
+    def __init__(self, data_handler, column, filters=None, transform=None):
+        """
+        SignalProcessor class to process data signals.
+        :filter: list, a list of filters to apply to the data, in order
+        :transform: list, a list of transformations to apply to the data, in order
+        """
+        if self.data_handler.window_size is None:
+            print("Please load the data handler with the cleaned data before using the SignalProcessor")
+            raise Exception("Data handler not loaded")
+        self.data_handler = data_handler
+        self.filters = filters if filters is not None else []
+        self.trans = transform if transform is not None else []
+        if isinstance(data_handler, RealTimeDataHandler):
+            self.data_handler.subscribe(self)  # Subscribe to the DataHandler
+        self.symbols = self.data_handler.symbols
+        self.column = column
+        # Initialize the processed data with the cleaned data, it has the same window size as the cleaned data
+        self.lookback = 1
+        self.k_space = False
+
+        self.na_num = 0
+        for filter_instance in self.filters:
+            self.na_num += filter_instance.rolling_window-1 
+        self.window_size = self.data_handler.window_size-self.na_num
+
+        for filter_instance in self.filters:
+            if filter_instance.lookback == 'all':
+                self.lookback = self.window_size
+            else: self.lookback = min(max(filter_instance.lookback, self.lookback), self.window_size)
+        for trans_instance in self.trans:
+            if trans_instance.lookback == 'all':
+                self.lookback = self.window_size
+                if isinstance(trans_instance, FourierTransformer):
+                    self.k_space = True
+            else: self.lookback = min(max(trans_instance.lookback, self.lookback), self.window_size)
+            """if isinstance(trans_instance, ScalerTransformer):
+                for symbol in self.symbols:
+                    trans_instance.fit_scaler(symbol, self.processed_data[symbol])"""
+        
+
+    def apply_filters(self, processed_data):
+        for filter_instance in self.filters:
+            for symbol in self.symbols:
+                recent_timestamps = self.data_handler.cleaned_data[symbol].tail(self.window_size).index
+                processed_data[symbol] = filter_instance.apply(processed_data[symbol])
+                processed_data[symbol] = processed_data[symbol].reindex(recent_timestamps)
+
+    def apply_transform(self, processed_data):
+        # Apply all filters to the data
+        k_space = False
+        for trans_instance in self.trans:
+            for symbol in self.symbols:
+                if not isinstance(trans_instance, FourierTransformer) and not k_space:
+                    recent_timestamps = self.data_handler.cleaned_data[symbol].tail(self.window_size).index
+                    if isinstance(trans_instance, ScalerTransformer):
+                        trans_instance.fit_scaler(symbol, processed_data[symbol])
+                        processed_data[symbol] = trans_instance.transform(symbol, processed_data[symbol])
+                        processed_data[symbol] = processed_data[symbol].reindex(recent_timestamps)
+                        continue
+                    processed_data[symbol] = trans_instance.transform(processed_data[symbol])
+                    processed_data[symbol] = processed_data[symbol].reindex(recent_timestamps)
+                else:
+                    processed_data[symbol] = trans_instance.transform(processed_data[symbol])
+                    k_space = True
+
+    def apply_all(self):
+        """First filter the data, then apply transformations."""
+        processed_data = {symbol: self.data_handler.cleaned_data[symbol][self.column].copy() for symbol in self.symbols}        
+        processed_data = self.apply_filters(processed_data)
+        processed_data = self.apply_transform(processed_data)
+        return processed_data
+    ####### Real Time Updating Functions ########
+
+
+    def update(self, new_data):
+        """Update the processed data with new incoming data."""
+        """In most of cases, incrementally is not possible, due to the stacking of multiple filters and transformers."""
+        processed_data = {symbol: self.data_handler.cleaned_data[symbol][self.column].copy() for symbol in self.symbols}        
+        processed_data = self.apply_filters(processed_data)
+        processed_data = self.apply_transform(processed_data)
+        return processed_data    
 
 
 """if __name__ == "__main__":

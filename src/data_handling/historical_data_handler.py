@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 
 class HistoricalDataHandler(DataHandler):
-    def __init__(self, source_file, cleaner_file=None, checker_file=None):
+    def __init__(self, source_file, json_file=None, cleaner_file=None, checker_file=None):
         """
         Initializes the historical data handler with source details, frequency, and optional JSON parameter files.
         :param source: Dictionary containing 'base_url' and 'endpoint'.
@@ -34,7 +34,44 @@ class HistoricalDataHandler(DataHandler):
             checker_file = os.path.join(os.path.dirname(__file__), 'config/checker.json')
         self.cleaner_params = self.load_params(cleaner_file)
         self.checker_params = self.load_params(checker_file)
+        with open(json_file, 'r') as file:
+            fetch_config = json.load(file)
 
+        self.symbols = [symbol_config['symbol'] for symbol_config in fetch_config['symbols']]
+        self.cleaned_data = {symbol: pd.DataFrame() for symbol in self.symbols}
+
+########################### Functions for loading data and backtesting ########################################
+
+    def load_data(self, interval_str='15m', begin_date='2023-01-01', end_date='2024-09-24'):
+        base_path = 'data/historical/processed/for_train/'
+        for symbol in self.symbols:
+            file_path = f'{base_path}{symbol}_{begin_date}_{end_date}_{interval_str}.csv'
+            self.cleaned_data[symbol] = pd.read_csv(file_path)
+
+        self.window_size = len(self.cleaned_data[self.symbols[0]])
+        self.interval_str = interval_str
+
+        return self.cleaned_data
+
+    def get_data(self, symbol, clean=True, rescale=False):
+        if clean:
+            return self.cleaned_data[symbol]
+        """if rescale:
+            return self.rescaled_data[symbol]"""
+        
+    def get_last_data(self, symbol, clean=True, rescale=False):
+        if clean:
+            return self.cleaned_data[symbol].iloc[-1]
+        """if rescale:
+            return self.rescaled_data[symbol].iloc[-1]"""
+        
+    def get_data_limit(self, symbol, limit, clean=True, rescale=False):
+        if clean:
+            return self.cleaned_data[symbol].tail(limit)
+        """if rescale:
+            return self.rescaled_data[symbol].tail(limit)"""
+    
+########################### Functions for fetching data ########################################
 
     def load_params(self, file_path):
         """

@@ -20,6 +20,9 @@ class FeatureExtractor:
     """
     
     def __init__(self, data_handler=None):
+        if self.data_handler.window_size is None:
+            print("Please load the data handler with the cleaned data before using the SignalProcessor")
+            raise Exception("Data handler not loaded")
         self.maximum_history = 100  # Maximum history to keep for indicators
         self.data_handler = data_handler
         self.symbols = self.data_handler.symbols
