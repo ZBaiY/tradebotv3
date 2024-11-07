@@ -1,6 +1,17 @@
 from base_strategy import BaseStrategy
 
 class MultiAssetStrategy(BaseStrategy):
+    def __init__(self, datahandler, portfolio_manager, feature_module=None, signal_processor=None):
+        """
+        Strategy class for trading
+        multiple assets simultaneously.
+        """
+        super().__init__(datahandler, portfolio_manager, feature_module, signal_processor)
+        self.model = None
+        self.current_data = {}
+        self.processed_data = {}
+        print("Initialized MultiAssetStrategy")
+        
     def initialize(self):
         """Set up parameters for multi-asset trading."""
         self.symbols = 

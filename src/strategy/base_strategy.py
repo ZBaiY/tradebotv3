@@ -1,7 +1,13 @@
+import os
+import sys
+# Add the src directory to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 from abc import ABC, abstractmethod
+from src.data_handling.real_time_data_handler import RealTimeDataHandler, LoggingHandler
 
 class BaseStrategy(ABC):
-    def __init__(self, datahandler, portfolio_manager, , feature_module=None, signal_processor=None):
+    def __init__(self, datahandler, portfolio_manager, feature_module=None, signal_processor=None):
         """
         Base class for all strategies.
 
@@ -10,11 +16,18 @@ class BaseStrategy(ABC):
         :param feature_module: Optional feature module for data processing
         :param signal_processor: Optional signal processing module for processed data
         """
-        self.model = model
+        self.equity = None
+        self.balances = None
         self.portfolio_manager = portfolio_manager
         self.feature_module = feature_module
-        self.datahandler = datahandler
+        self.data_handler = datahandler
+        self.symbols = self.data_handler.symbols
         self.signal_processor = signal_processor
+
+    def set_equity(self, equity):
+        self.equity = equity
+    def set_balances(self, balances):
+        self.balances = balances
 
     @abstractmethod
     def initialize(self):

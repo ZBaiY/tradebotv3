@@ -5,6 +5,12 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import json
 
+
+"""
+The CapitalAllocator module will allocate a percentage of the total savings to crypto.
+Will be directly used in the real-time trading module.s
+"""
+
 class CapitalAllocator:
     def __init__(self, config_path='config/capital.json'):
         self.load_config(config_path)
@@ -12,6 +18,14 @@ class CapitalAllocator:
         self.savings_interest = self.config['savings_interest']
         self.allocate_method = self.config['allocate_method']
         self.capital_allocation_percentage = self.config.get('capital_allocation_percentage', 0.1)
+        self.equity = None
+        self.balances = None
+
+    def set_equity(self, equity):
+        self.equity = equity
+    
+    def set_balances(self, balances):
+        self.balances = balances
 
     def percentage_allocation(self, percentage):
         self.capital_allocation_percentage = percentage

@@ -1,3 +1,8 @@
+"""
+This module just executes rebalancing of the portfolio based on the threshold.
+Which is guided by the PortfolioManager class.
+"""
+
 # rebalancer.py
 from portfolio_manager import PortfolioManager
 

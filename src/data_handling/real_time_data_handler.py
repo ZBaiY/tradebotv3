@@ -75,7 +75,7 @@ class SizeLimitedFileHandler(logging.FileHandler):
 
 # Helper class to handle logging
 class LoggingHandler:
-    def __init__(self, log_dir='../../data/real_time/logs', log_file='data_logs.log'):
+    def __init__(self, log_dir='/data/real_time/logs', log_file='data_logs.log'):
         self.log_file = os.path.join(os.path.dirname(__file__), log_dir, log_file)
         if not os.path.exists(os.path.dirname(self.log_file)):
             os.makedirs(os.path.dirname(self.log_file))
@@ -807,19 +807,19 @@ class RealTimeDataHandler(DataHandler):
         for subscriber in self.subscribers:
             subscriber.update(new_data)
 
-    def get_data(self, symbol, clean=False, rescale=False):
+    def get_data(self, symbol, clean=True, rescale=False):
         if clean:
             return self.cleaned_data[symbol]
         """if rescale:
             return self.rescaled_data[symbol]"""
         
-    def get_last_data(self, symbol, clean=False, rescale=False):
+    def get_last_data(self, symbol, clean=True, rescale=False):
         if clean:
             return self.cleaned_data[symbol].iloc[-1]
         """if rescale:
             return self.rescaled_data[symbol].iloc[-1]"""
         
-    def get_data_limit(self, symbol, limit, clean=False, rescale=False):
+    def get_data_limit(self, symbol, limit, clean=True, rescale=False):
         if clean:
             return self.cleaned_data[symbol].tail(limit)
         """if rescale:

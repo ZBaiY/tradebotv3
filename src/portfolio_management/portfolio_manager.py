@@ -1,3 +1,5 @@
+"""A """
+
 # portfolio_manager.py
 
 class PortfolioManager:
@@ -9,6 +11,14 @@ class PortfolioManager:
         """
         self.allocated_capital = allocated_capital
         self.target_allocation = target_allocation
+        self.equity = None
+        self.balances = None
+
+    def set_equity(self, equity):
+        self.equity = equity
+
+    def set_balances(self, balances):
+        self.balances = balances
 
     def calculate_individual_allocations(self):
         """
@@ -18,6 +28,22 @@ class PortfolioManager:
         for symbol, percentage in self.target_allocation.items():
             allocations[symbol] = self.allocated_capital * percentage
         return allocations
+    
+    def needs_rebalance(self, current_holdings):
+        """
+        Determines if the portfolio needs rebalancing based on threshold.
+        
+        Parameters:
+            current_holdings (dict): Current holdings by crypto symbol.
+
+        Returns:
+            bool: True if rebalancing is needed, otherwise False.
+        """
+        rebalance_orders = self.portfolio_manager.rebalance(current_holdings)
+        for symbol, adjustment in rebalance_orders.items():
+            if abs(adjustment / self.portfolio_manager.allocated_capital) > self.threshold:
+                return True
+        return False
 
     def rebalance(self, current_holdings):
         """
