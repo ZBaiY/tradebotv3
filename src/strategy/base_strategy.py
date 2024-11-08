@@ -21,8 +21,11 @@ class BaseStrategy(ABC):
         self.portfolio_manager = portfolio_manager
         self.feature_module = feature_module
         self.data_handler = datahandler
-        self.symbols = self.data_handler.symbols
+        self.symbols = None
         self.signal_processor = signal_processor
+        
+    def set_symbols(self, symbols):
+        self.symbols = symbols
 
     def set_equity(self, equity):
         self.equity = equity

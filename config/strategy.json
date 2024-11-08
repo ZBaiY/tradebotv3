@@ -1,0 +1,15 @@
+{
+    "BTCUSDT": {
+        "model": {"method": "a1", "params": {"para1": "p1", "para2": "p2"}},
+        "risk_manager": {"stop_method": "atr", "stop_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
+                         "take_method": "atr", "take_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
+                         "position_method": "atr", "position_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14}}
+    },
+    "ETHUSDT": {
+        "model": {"method": "a1", "params": {"para1": "p1", "para2": "p2"}},
+        "risk_manager": {"stop_method": "atr", "stop_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
+                         "take_method": "atr", "take_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
+                         "position_method": "atr", "position_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14}}}
+    }
+}
+

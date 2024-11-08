@@ -4,6 +4,7 @@ import sys
 # Add the src directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from src.data_handling.real_time_data_handler import RealTimeDataHandler, LoggingHandler
+import src.portfolio_management.single_risk as srMan
 
 class RiskManager:
     def __init__(self, data_handler, config):
@@ -63,42 +64,3 @@ class RiskManager:
         pass
 
 
-
-class AtypeRiskManager():
-    def __init__(self, symbol):
-        """
-        Parameters:
-            stop_loss_threshold (float): Loss threshold to trigger stop-loss.
-            take_profit_threshold (float): Profit threshold to trigger take-profit.
-            atr_window (int): Window size for Average True Range (ATR) calculation.
-        """
-        super().__init__(stop_loss_threshold, take_profit_threshold)
-        self.atr_window = atr_window
-
-    def evaluate_position(self, symbol, entry_price, current_price, atr):
-        """
-        Evaluates whether to close a position based on stop-loss or take-profit levels.
-        
-        Parameters:
-            symbol (str): Crypto symbol.
-            entry_price (float): The price at which the position was opened.
-            current_price (float): The current market price.
-            atr (float): Average True Range (ATR) value.
-
-        Returns:
-            str: 'sell' if conditions for stop-loss or take-profit are met, 'hold' otherwise.
-        """
-        if current_price <= entry_price - atr * self.stop_loss_threshold:
-            return 'sell'  # Stop-loss
-        elif current_price >= entry_price + atr * self.take_profit_threshold:
-            return 'sell'  # Take-profit
-        else:
-            return 'hold'
-        
-    def update_risk_parameters(self, new_stop_loss, new_take_profit, new_atr_window):
-        """
-        Updates stop-loss, take-profit, and ATR window parameters.
-        """
-        self.stop_loss_threshold = new_stop_loss
-        self.take_profit_threshold = new_take_profit
-        self.atr_window = new_atr_window

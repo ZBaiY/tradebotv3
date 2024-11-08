@@ -59,10 +59,16 @@ class RealtimeDealer:
         self.balances_symbol_fr = None # can be touched in total
         self.equity_balance()
         self.equity_balance_tools()
+        self.set_symbols(self.symbols)
 
 
         self.is_running = False 
-
+    def set_symbols(self, symbols):
+        self.Strategy.set_symbols(symbols)
+        self.RiskManager.set_symbols(symbols)
+        self.PortfolioManager.set_symbols(symbols)
+        self.CapitalAllocator.set_symbols(symbols)
+        
     def equity_balance(self):
         info = self.OrderManager.get_account_info()['balance']
         self.balances_str = info['balances']
