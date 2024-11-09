@@ -7,7 +7,7 @@ from src.data_handling.real_time_data_handler import RealTimeDataHandler, Loggin
 import src.portfolio_management.single_risk as srMan
 
 class RiskManager:
-    def __init__(self, data_handler, config):
+    def __init__(self, config, data_handler, signal_processor=None, feature_handler=None):
         """
         Parameters:
             stop_loss_threshold (float): Loss threshold to trigger stop-loss.
@@ -22,13 +22,29 @@ class RiskManager:
         self.balances = None
         self.data_handler = data_handler
         self.symbols = self.data_handler.symbols
+        self.signal_processor = signal_processor
+        self.feature_handler = feature_handler
         self.stop_loss_threshold = None
         self.take_profit_threshold = None
+        self.config = config
+        self.risk_managers = {}
+        self.initialize_risk_managers()
+
+    def initialize_risk_managers(self):
+        for symbol in self.symbols:
+                self.risk_managers[symbol] = srMan.SingleRiskManager(symbol, self.config[symbol]["risk_manager"])
 
     def set_equity(self, equity):
         self.equity = equity
+
     def set_balances(self, balances):
         self.balances = balances
+
+    def get_stop_loss(self, symbol):
+        for symbol in self.symbols:
+            self.risk_managers[symbol].request_data(self.data_handler, self.signal_processor, self.feature_handler)
+            self.risk_managers[symbol].calculate_stop_loss()
+            self.risk_managers[symbol].calculate_take_profit()
 
     
     def evaluate_position(self, symbol, entry_price, current_price):

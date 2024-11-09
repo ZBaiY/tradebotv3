@@ -66,6 +66,12 @@ class SingleRiskManager:
             self.risk_percentage = self.postion_params.get("risk_percentage", 2)
         else:
             raise ValueError("Invalid method for position sizing.")
+    def request_data(self, datahandler, signal_processor, features):
+        # The requested data will be written in files under the folder src/model_details/...
+        pass
+
+    def calculate_stop_loss(self):
+        pass
         
     
         
