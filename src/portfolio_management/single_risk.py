@@ -132,16 +132,56 @@ class SingleRiskManager:
             self.input_take['max_price'] = max(look_back_prices)
         if "entry_price" in self.required_take_fields:
             self.input_take['entry_price'] = self.entry_price
+        if "current_price" in self.required_position_fields:
+            self.input_position['current_price'] = datahandler.get_last_price(self.symbol)['close']
         
-
-
-        pass
-
     def calculate_stop_loss(self):
-        # 1. check if the requested data is available
-
-        pass
+        if self.stop_method == "atr":
+            self.stop_loss = StopLoss.atr_stop_loss(self.atr_multiplier, **self.input_stop)
+        elif self.stop_method == "trailing":
+            self.stop_loss = StopLoss.trailing_stop_loss(self.trail_percent, **self.input_stop)
+        elif self.stop_method == "static":
+            self.stop_loss = StopLoss.static_stop_loss(self.stop_loss_percent, **self.input_stop)
+        elif self.stop_method == "risk_reward":
+            self.stop_loss = StopLoss.risk_reward_take_profit(self.risk_reward_ratio, **self.input_stop)
+        elif self.stop_method == "custom_1":
+            ###### This needs to be updated (trend_dir) ######
+            self.stop_loss = StopLoss.custom_1(self.atr_multiplier, self.trail_percent, self.stop_loss_percent, **self.input_stop)
+        else:
+            raise ValueError("Invalid method for stop loss.")
+    
+    def calculate_take_profit(self):
+        self.input_take['stop_loss_price'] = self.stop_loss
+        if self.take_method == "static":
+            self.take_profit = TakeProfit.static_take_profit(self.take_profit_percent, **self.input_take)
+        elif self.take_method == "trailing":
+            self.take_profit = TakeProfit.trailing_take_profit(self.trail_percent, **self.input_take)
+        elif self.take_method == "risk_reward":
+            self.take_profit = TakeProfit.risk_reward_take_profit(self.risk_reward_ratio, **self.input_take)
+        else:
+            raise ValueError("Invalid method for take profit.")
         
+
+    ######### Position Sizing needs updates #########
+    def calculate_position_size(self):
+        self.input_position['stop_loss_price'] = self.stop_loss
+        self.input_position['take_profit_price'] = self.take_profit
+        if self.position_method == "kelly":
+            self.position_size = PositionSizing.kelly_criterion(self.win_rate, self.avg_win, self.avg_loss)
+        elif self.position_method == "risk_based":
+            self.position_size = PositionSizing.risk_based_position_size(self.risk_per_trade, **self.input_position)
+        elif self.position_method == "fixed_fractional":
+            self.position_size = PositionSizing.fixed_fractional_position_size(self.risk_percentage, **self.input_position)
+        else:
+            raise ValueError("Invalid method for position sizing.")
+
+    def get_stop_loss(self):
+        return self.stop_loss
+    def get_take_profit(self):
+        return self.take_profit
+    def get_position_size(self):
+        return self.position_size
+
     
         
         
@@ -160,7 +200,7 @@ class SingleRiskManager:
 class StopLoss:
 
     @staticmethod
-    def atr_stop_loss(current_price, atr, atr_multiplier=1):
+    def atr_stop_loss(atr_multiplier=1, **kwargs):
         """
         Calculate the stop loss based on the average true range (ATR).
 
@@ -169,10 +209,15 @@ class StopLoss:
         :param atr_multiplier: The ATR multiplier for the stop loss.
         :return: The stop loss price.
         """
-        stop_loss = current_price - (atr_multiplier * atr)
+        current_price = kwargs.get("current_price", None)
+        atr = kwargs.get("atr", None)
+        if current_price is None or atr is None:
+            return -1
+        stop_loss = max(current_price - (atr_multiplier * atr), 0)
         return stop_loss
+    
     @staticmethod
-    def trailing_stop_loss(max_price, trail_percent=0.15):
+    def trailing_stop_loss(trail_percent=0.15, **kwargs):
         """
         Calculates the trailing stop-loss price.
         
@@ -184,13 +229,15 @@ class StopLoss:
         Returns:
         - float: The trailing stop-loss price.
         """
-
+        max_price = kwargs.get("max_price", None)
+        if max_price is None:
+            return -1
         trail_amount = max_price * trail_percent
         stop_loss = max_price - trail_amount
-        return stop_loss  # Ensure stop loss doesn't go below entry price
+        return max(stop_loss,0)  # Ensure stop loss doesn't go below entry price
 
     @staticmethod
-    def static_stop_loss(entry_price, stop_loss_percent=0.02):
+    def static_stop_loss(stop_loss_percent=0.02, **kwargs):
         """
         Calculate static stop-loss price based on a percentage.
 
@@ -198,11 +245,14 @@ class StopLoss:
         :param stop_loss_percent: Percentage below entry price for stop loss.
         :return: Stop-loss price.
         """
+        entry_price = kwargs.get("entry_price", None)
+        if entry_price is None:
+            return -1
         stop_loss_price = entry_price * (1 - stop_loss_percent)
-        return stop_loss_price
+        return max(stop_loss_price,0)
 
     @staticmethod
-    def custom_1(trend_dir, current_price ,atr, max_price, entry_price, atr_multiplier=1, trail_percent = 0.2, stop_loss_percent=0.02):
+    def custom_1(trend_dir, atr_multiplier=1, trail_percent = 0.2, stop_loss_percent=0.02, **kwargs):
         """
         Calculate the stop loss based on the trend direction.
         atr_stop_loss for uptrend, trailing_stop_loss for downtrend, static_stop_loss for sideway trend.
@@ -216,21 +266,26 @@ class StopLoss:
         :param stop_loss_percent: The static stop loss percentage.
         :return: The stop loss price.
         """
-        
+        current_price = kwargs.get("current_price", None)
+        atr = kwargs.get("atr", None)
+        max_price = kwargs.get("max_price", None)
+        entry_price = kwargs.get("entry_price", None)
+        if current_price is None or atr is None or max_price is None or entry_price is None:
+            return -1
         if trend_dir == -1:
             stop_loss = StopLoss.atr_stop_loss(current_price, atr, atr_multiplier)
         elif trend_dir == 1: 
             stop_loss = StopLoss.trailing_stop_loss(max_price, trail_percent)
         else: 
             stop_loss = StopLoss.static_stop_loss(entry_price, stop_loss_percent)
-        return stop_loss
+        return max(stop_loss,0)
 
 
 class TakeProfit:
 
 
     @staticmethod
-    def risk_reward_take_profit(entry_price, stop_loss_price, risk_reward_ratio=2):
+    def risk_reward_take_profit(risk_reward_ratio=2, **kwargs):
         """
         Calculate take-profit price based on risk-reward ratio.
 
@@ -239,12 +294,17 @@ class TakeProfit:
         :param risk_reward_ratio: Desired risk-reward ratio (e.g., 2 for a 2:1 ratio).
         :return: Take-profit price.
         """
+        entry_price = kwargs.get("entry_price", None)
+        stop_loss_price = kwargs.get("stop_loss_price", None)
+        if entry_price is None or stop_loss_price is None:
+            return -1
         risk_amount = entry_price - stop_loss_price
         take_profit_price = entry_price + (risk_amount * risk_reward_ratio)
+        
         return take_profit_price
 
     @staticmethod
-    def trailing_take_profit(entry_price, max_price, trail_percent=0.05):
+    def trailing_take_profit(trail_percent=0.05, **kwargs):
         """
         Calculate trailing take-profit price based on percentage.
 
@@ -254,18 +314,20 @@ class TakeProfit:
         :return: Trailing take-profit price.
         """
         # Validate inputs
+        entry_price = kwargs.get("entry_price", None)
+        max_price = kwargs.get("max_price", None)
+
         if entry_price <= 0 or max_price <= 0 or trail_percent <= 0:
-            raise ValueError("Entry price, max price, and trail percent must be positive values.")
+            return -1
         if max_price < entry_price:
-            raise ValueError("Max price must be greater than or equal to entry price.")
-        
+            return -1
         trail_amount = max_price * trail_percent
         trailing_take_profit_price = max_price - trail_amount
         
         return trailing_take_profit_price
 
     @staticmethod
-    def static_take_profit(entry_price, take_profit_percent):
+    def static_take_profit(take_profit_percent, **kwargs):
         """
         Calculate the take-profit price based on a fixed percentage above the entry price.
 
@@ -273,6 +335,7 @@ class TakeProfit:
         :param take_profit_percent: Percentage above the entry price for taking profit.
         :return: Take-profit price.
         """
+        entry_price = kwargs.get("entry_price", None)
         take_profit_price = entry_price * (1 + take_profit_percent)
         return take_profit_price
 

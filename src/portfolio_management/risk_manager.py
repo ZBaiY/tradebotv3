@@ -46,32 +46,15 @@ class RiskManager:
     def set_balances(self, balances):
         self.balances = balances
 
-    def get_stop_loss(self, symbol):
+    ### Calculate stop-loss take-profit and postion size
+    def calculate_stp(self, symbol): 
         for symbol in self.symbols:
             self.risk_managers[symbol].request_data(self.data_handler, self.signal_processor, self.feature_handler)
             self.risk_managers[symbol].calculate_stop_loss()
             self.risk_managers[symbol].calculate_take_profit()
+            self.risk_managers[symbol].calculate_position_size(self.equity, self.balances)
 
-    
-    def evaluate_position(self, symbol, entry_price, current_price):
-        """
-        Evaluates whether to close a position based on stop-loss or take-profit levels.
-        
-        Parameters:
-            symbol (str): Crypto symbol.
-            entry_price (float): The price at which the position was opened.
-            current_price (float): The current market price.
 
-        Returns:
-            str: 'sell' if conditions for stop-loss or take-profit are met, 'hold' otherwise.
-        """
-        if current_price <= entry_price * (1 - self.stop_loss_threshold):
-            return 'sell'  # Stop-loss
-        elif current_price >= entry_price * (1 + self.take_profit_threshold):
-            return 'sell'  # Take-profit
-        else:
-            return 'hold'
-    
     def update_risk_parameters(self, new_stop_loss, new_take_profit):
         """
         Updates stop-loss and take-profit parameters.
@@ -81,8 +64,21 @@ class RiskManager:
         
 
     def get_stop_loss(self):
-        pass
+        stop_losses = {}
+        for symbol in self.symbols:
+            stop_losses[symbol] = self.risk_managers[symbol].get_stop_loss()
+        return stop_losses
+
     def get_take_profit(self):
-        pass
+        take_profits = {}
+        for symbol in self.symbols:
+            take_profits[symbol] = self.risk_managers[symbol].get_take_profit()
+        return take_profits
+    
+    def get_position_size(self):
+        position_sizes = {}
+        for symbol in self.symbols:
+            position_sizes[symbol] = self.risk_managers[symbol].get_position_size()
+        return position_sizes
 
 
