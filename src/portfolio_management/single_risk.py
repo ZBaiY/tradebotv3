@@ -1,6 +1,11 @@
 """
 This is the class for single asset trading risk management.
 """
+import json
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 class SingleRiskManager:
     def __init__(self, symbol, config):
         """
@@ -20,38 +25,78 @@ class SingleRiskManager:
         self.take_params = config.get("take_params", {})
         self.position_method = config.get("position_method", "static")
         self.postion_params = config.get("position_params", {})
+        self.entry_price = None
         
         self.setup_stop()
         self.setup_take()
         self.setup_position()
-
+        self.required_stop_fields = None
+        self.required_take_fields = None
+        self.required_position_fields = None
+        self.input_stop = None  
+        self.input_take = None
+        self.input_position = None
         self.take_profit = None
         self.stop_loss = None
 
+    def read_json_file(file_path):
+        """
+        Read a JSON file and return its contents as a Python object.
+        :param file_path: The path to the JSON file.
+        :return: The contents of the JSON file as a Python object.
+        """
+        try:
+            with open(file_path, 'r') as file:
+                data = json.load(file)
+            return data
+        except FileNotFoundError:
+            print(f"File not found: {file_path}")
+            return None
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON from file: {file_path}")
+            return None
+        
+    def set_entry_price(self, entry_price):
+        self.entry_price = entry_price
+
     def setup_stop(self):
+        stop_requires = self.read_json_file("src/portfolio_management/model_details/stop_required_fields.json")
 
         if self.stop_method == "atr":
             self.atr_multiplier = self.stop_params.get("atr_multiplier", 1)
+            self.required_stop_fields = stop_requires["atr"]
         elif self.stop_method == "trailing":
             self.trail_percent = self.stop_params.get("trail_percent", 0.05)
+            self.trail_lookback = self.stop_params.get("trail_lookback", 15)
+            self.required_stop_fields = stop_requires["trailing"]
         elif self.stop_method == "static":
             self.stop_loss_percent = self.stop_params.get("stop_loss_percent", 0.02)
+            self.required_stop_fields = stop_requires["static"]
         elif self.stop_method == "risk_reward":
             self.risk_reward_ratio = self.stop_params.get("risk_reward_ratio", 2)
+            self.required_stop_fields = stop_requires["risk_reward"]
         elif self.stop_method == "custom_1":
             self.atr_multiplier= self.stop_params.get("atr_multiplier", 1)
             self.trail_percent = self.stop_params.get("trail_percent", 0.2)
+            self.trail_lookback = self.stop_params.get("trail_lookback", 15)
             self.stop_loss_percent=self.stop_params.get("stop_loss_percent", 0.02)
+            self.required_stop_fields = stop_requires["custom_1"]
         else:
             raise ValueError("Invalid method for stop loss.")
         
-    def setup_take(self):        
+        
+    def setup_take(self): 
+        take_requires = self.read_json_file("src/portfolio_management/model_details/take_required_fields.json")
+
         if self.take_method == "static":
             self.take_profit_percent = self.take_params.get("take_profit_percent", 0.05)
+            self.required_take_fields = take_requires["static"]
         elif self.take_method == "trailing":
             self.trail_percent = self.take_params.get("trail_percent", 0.1)
+            self.required_take_fields = take_requires["trailing"]
         elif self.take_method == "risk_reward":
             self.risk_reward_ratio = self.take_params.get("risk_reward_ratio", 2)
+            self.required_take_fields = take_requires["risk_reward"]
         else:
             raise ValueError("Invalid method for take profit.")
     
@@ -66,11 +111,35 @@ class SingleRiskManager:
             self.risk_percentage = self.postion_params.get("risk_percentage", 2)
         else:
             raise ValueError("Invalid method for position sizing.")
-    def request_data(self, datahandler, signal_processor, features):
+        
+
+    def request_data(self, datahandler, features, signal_processor):
         # The requested data will be written in files under the folder src/model_details/...
+        if "current_price" in self.required_stop_fields:
+            self.input_stop['current_price'] = datahandler.get_last_price(self.symbol)['close']
+        if "atr" in self.required_stop_fields:
+            self.input_stop['atr'] = features.get_last_indicator(self.symbol, 'atr')
+        if "max_price" in self.required_stop_fields:
+            look_back_prices = datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
+            self.input_stop['max_price'] = max(look_back_prices)
+        if "entry_price" in self.required_stop_fields:
+            self.input_stop['entry_price'] = self.entry_price
+        
+        if "current_price" in self.required_take_fields:
+            self.input_take['current_price'] = datahandler.get_last_price(self.symbol)['close']
+        if "max_price" in self.required_take_fields:
+            look_back_prices = datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
+            self.input_take['max_price'] = max(look_back_prices)
+        if "entry_price" in self.required_take_fields:
+            self.input_take['entry_price'] = self.entry_price
+        
+
+
         pass
 
     def calculate_stop_loss(self):
+        # 1. check if the requested data is available
+
         pass
         
     
@@ -91,7 +160,7 @@ class SingleRiskManager:
 class StopLoss:
 
     @staticmethod
-    def atr_stop_loss(current_price, atr, atr_multiplier=0.02):
+    def atr_stop_loss(current_price, atr, atr_multiplier=1):
         """
         Calculate the stop loss based on the average true range (ATR).
 

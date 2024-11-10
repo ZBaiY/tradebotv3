@@ -1,0 +1,6 @@
+{
+    "atr":["current_price", "atr"],
+    "trailing":["max_price"],
+    "static":["entry_price"],
+    "custom_1":["current_price", "atr", "max_price", "entry_price"]
+}

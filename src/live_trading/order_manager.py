@@ -21,6 +21,8 @@ class OrderManager:
         self.logger.info("OrderManager initialized.")
         # Initialize the order file
         self.initialize_order_file()
+    
+
 
     def initialize_order_file(self):
         """
@@ -152,7 +154,24 @@ class OrderManager:
         "permissions": ["SPOT"]
     }
     """
-        
+
+    def fetch_past_trades_from_api(self, symbol, limit=50):
+        """
+        Fetch past trades for a specific symbol from the Binance API.
+        :param symbol: Trading pair symbol (e.g., 'BTCUSDT')
+        :param limit: Maximum number of trades to fetch (Binance allows up to 1000 at once)
+        :return: List of trades or None if an error occurs
+        """
+        try:
+            # For Binance Futures account trades
+            trades = self.client.futures_account_trades(symbol=symbol, limit=limit)
+            self.logger.info(f"Fetched {len(trades)} trades for {symbol} from Binance API.")
+            return trades
+        except BinanceAPIException as e:
+            self.logger.error(f"Error fetching trades from API for {symbol}: {e}")
+            return None
+
+
     def add_order(self, order_id, order):
         """
         Add an active order to the tracking dictionary and write it to the file.

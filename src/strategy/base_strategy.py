@@ -6,7 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 from abc import ABC, abstractmethod
 from src.data_handling.real_time_data_handler import RealTimeDataHandler, LoggingHandler
 
-class BaseStrategy(ABC):
+class BaseStrategy():
     def __init__(self, datahandler, portfolio_manager, feature_module=None, signal_processor=None):
         """
         Base class for all strategies.
@@ -24,20 +24,21 @@ class BaseStrategy(ABC):
         self.symbols = None
         self.signal_processor = signal_processor
         
+    
+
     def set_symbols(self, symbols):
         self.symbols = symbols
 
     def set_equity(self, equity):
         self.equity = equity
+        
     def set_balances(self, balances):
         self.balances = balances
 
-    @abstractmethod
     def initialize(self):
         """Initialize strategy parameters and any necessary setup."""
         pass
 
-    @abstractmethod
     def update(self, market_data):
         """
         Update strategy with new market data.
@@ -45,7 +46,6 @@ class BaseStrategy(ABC):
         """
         pass
 
-    @abstractmethod
     def calculate_signals(self):
         """
         Calculate buy/sell signals based on predictions and processed data.

@@ -638,6 +638,16 @@ class FeatureExtractor:
         else:
             updated_obv = prev_obv
         return updated_obv
+    
+    def get_last_indicator(self, symbol, indicator):
+        """
+        Get the last value of a specific indicator for a given symbol.
+        
+        :param symbol: The trading symbol.
+        :param indicator: The indicator to retrieve.
+        :return: The last value of the indicator.
+        """
+        return self.indicators[symbol][indicator].iloc[-1]
 
 
 if __name__ == "__main__":

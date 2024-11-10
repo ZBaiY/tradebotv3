@@ -57,10 +57,11 @@ class RealtimeDealer:
         self.balances_symbol = None
         self.balances_str = None
         self.balances_symbol_fr = None # can be touched in total
+        self.entry_prices = {}
         self.equity_balance()
         self.equity_balance_tools()
         self.set_symbols(self.symbols)
-
+        
 
         self.is_running = False 
     def set_symbols(self, symbols):
@@ -68,7 +69,9 @@ class RealtimeDealer:
         self.RiskManager.set_symbols(symbols)
         self.PortfolioManager.set_symbols(symbols)
         self.CapitalAllocator.set_symbols(symbols)
-        
+    
+    
+    
     def equity_balance(self):
         info = self.OrderManager.get_account_info()['balance']
         self.balances_str = info['balances']
@@ -95,6 +98,49 @@ class RealtimeDealer:
 
         return total_equity
     
+    def set_entry_price(self):
+        for symbol in self.symbols:
+            self.entry_prices[symbol] = self.entry_price(symbol)
+    
+    def entry_price(self, symbol):
+        """
+        Calculate the weighted average entry price for a current open position of a specific symbol.
+        :param symbol: The symbol to calculate the entry price for (e.g., 'BTCUSDT').
+        :return: The average entry price or None if no open position.
+        """
+        past_trades = self.OrderManager.fetch_past_trades_from_api()
+        total_bought_qty = 0.0
+        total_cost = 0.0
+        remaining_qty = 0.0
+
+        for order_id, order in past_trades.items():
+            # Only consider trades for the given symbol that are fully filled
+            if order['symbol'] == symbol and order['status'] == "FILLED":
+                trade_qty = float(order['executedQty'])
+                trade_price = float(order['price'])
+                trade_side = order['side']  # 'BUY' or 'SELL'
+
+                if trade_side == 'BUY':
+                    total_cost += trade_qty * trade_price  # Accumulate the cost
+                    total_bought_qty += trade_qty  # Accumulate the quantity bought
+                    remaining_qty += trade_qty  # Add to the open position
+                elif trade_side == 'SELL':
+                    remaining_qty -= trade_qty  # Reduce the open position by the sold quantity
+                    # If more quantity is sold than was bought, reset total cost and quantities
+                    if remaining_qty < 0:
+                        remaining_qty = 0
+                        total_cost = 0
+                        total_bought_qty = 0
+
+        # Calculate weighted average entry price based on remaining open position
+        if remaining_qty > 0:
+            weighted_entry_price = total_cost / total_bought_qty
+            self.logger.info(f"Calculated entry price for {symbol}: {weighted_entry_price}")
+            return weighted_entry_price
+        else:
+            self.logger.info(f"No open position found for {symbol}. Entry price calculation not applicable.")
+            return 0.0
+        
     def equity_balance_tools(self):
         self.RiskManager.set_equity(self.equity)
         self.RiskManager.set_balances(self.balances_symbol_fr)   
@@ -104,6 +150,9 @@ class RealtimeDealer:
         self.PortfolioManager.set_balances(self.balances_symbol_fr)
         self.CapitalAllocator.set_equity(self.equity)
         self.CapitalAllocator.set_balances(self.balances_symbol_fr)
+
+    def set_entry_price(self):
+        self.RiskManager.set_entry_price(self.entry_prices)
 
     def get_asset_price(self, asset, quote):
         try:
@@ -181,6 +230,7 @@ class RealtimeDealer:
 
             self.equity_balance()
             self.equity_balance_tools()
+            self.set_entry_price()
 
             self.CapitalAllocator.action() # CapitalAllocator will adjust the equity and balance
             self.PortfolioManager.action() # PortfolioManager will adjust the equity between assets
@@ -192,6 +242,7 @@ class RealtimeDealer:
             sleep_duration = (next_fetch_time - now).total_seconds() + 1
             self.logger.info(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
             time.sleep(sleep_duration)
+
 
 
     def calculate_next_grid(self, current_time):
@@ -214,3 +265,6 @@ class RealtimeDealer:
     def stop(self):
         self.is_running = False
         self.logger.info("Stopping RealtimeDealer.")
+
+    def get_entry_price(self, symbol):
+        return self.entry_prices[symbol]
