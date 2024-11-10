@@ -14,7 +14,7 @@ class MultiAssetStrategy(BaseStrategy):
         
     def initialize(self):
         """Set up parameters for multi-asset trading."""
-        self.symbols = 
+        self.symbols = ...
     def update(self, market_data):
         """Update strategy with new market data for multiple assets."""
         self.current_data = {asset: market_data.get(asset, {}) for asset in self.assets}

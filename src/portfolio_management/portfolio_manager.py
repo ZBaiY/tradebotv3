@@ -1,4 +1,5 @@
-"""A """
+"""Should be directly called by the real-time trading module to allocate capital to crypto."""
+"""Not a part of the strategy module."""
 
 # portfolio_manager.py
 
