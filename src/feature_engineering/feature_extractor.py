@@ -648,6 +648,15 @@ class FeatureExtractor:
         :return: The last value of the indicator.
         """
         return self.indicators[symbol][indicator].iloc[-1]
+    
+    def get_indicators(self, symbol, indicator):
+        """
+        Get all the indicators for a given symbol.
+        
+        :param symbol: The trading symbol.
+        :return: A DataFrame containing all the indicators.
+        """
+        return self.indicators[symbol][indicator]
 
 
 if __name__ == "__main__":

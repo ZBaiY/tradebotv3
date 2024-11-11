@@ -57,6 +57,7 @@ class RealtimeDealer:
         self.balances_symbol = None
         self.balances_str = None
         self.balances_symbol_fr = None # can be touched in total
+        self.assigned_capitals = None
         self.entry_prices = {}
         self.equity_balance()
         self.equity_balance_tools()
@@ -94,7 +95,7 @@ class RealtimeDealer:
                 price = self.get_asset_price(asset, 'USDT')
                 total_equity += total * price
                 self.balances_symbol[symbol] = total
-                self.balances_symbol_fr[asset] = free
+                self.balances_symbol_fr[symbol] = free * price
 
         return total_equity
     
@@ -141,6 +142,29 @@ class RealtimeDealer:
             self.logger.info(f"No open position found for {symbol}. Entry price calculation not applicable.")
             return 0.0
         
+    def initialize_singles_tools(self):
+        self.RiskManager.initialize_singles()
+        # Strategy depends on RiskManager so it should be initialized after RiskManager
+        self.Strategy.initialize_singles()    
+
+    def initialize(self):
+        """
+        Fist read the current equity and balance, and portfolio manager from logs
+        Then set the equity and balance to the strategy, risk_manager, and portfolio
+        Then Initialize the strategy, risk_manager singles
+        Then set the entry prices
+
+        After this function, all the tools are ready to run
+        """
+        pass
+
+    def set_assigned_capitals(self, assigned_capitals):
+        self.assigned_capitals = assigned_capitals
+        self.Strategy.set_assigned_capitals(assigned_capitals)
+        self.RiskManager.set_assigned_capitals(assigned_capitals)
+    
+
+
     def equity_balance_tools(self):
         self.RiskManager.set_equity(self.equity)
         self.RiskManager.set_balances(self.balances_symbol_fr)   
@@ -151,7 +175,25 @@ class RealtimeDealer:
         self.CapitalAllocator.set_equity(self.equity)
         self.CapitalAllocator.set_balances(self.balances_symbol_fr)
 
+
+    def update_equity_balances(self):
+        self.RiskManager.update_equity(self.equity)
+        self.Strategy.update_equity(self.equity)
+        self.RiskManager.update_balances(self.balances_symbol_fr)
+        self.Strategy.update_balances(self.balances_symbol_fr)
+
+
+
+    def update_assigned_capitals(self, assigned_capitals):
+        self.assigned_capitals = assigned_capitals
+        self.RiskManager.update_assigned_capitals(assigned_capitals)
+        self.Strategy.update_assigned_capitals(assigned_capitals)
+
     def set_entry_price(self):
+        entry_prices = {}
+        for symbol in self.symbols:
+            entry_prices[symbol] = self.entry_price(symbol)
+        self.entry_prices = entry_prices
         self.RiskManager.set_entry_price(self.entry_prices)
 
     def get_asset_price(self, asset, quote):
@@ -164,9 +206,11 @@ class RealtimeDealer:
             return 0.0
 
     def start(self):
+
         self.is_running = True
         next_fetch_time, last_fetch_time = self.data_handler.pre_run_data()
         self.logger.info("Starting RealtimeDealer.")
+        self.initialize()
 
         while self.is_running:
             self.data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
@@ -227,14 +271,23 @@ class RealtimeDealer:
                         price=-1
                     )
             # Check for any stop-loss or take-profit conditions and execute orders
-
-            self.equity_balance()
-            self.equity_balance_tools()
+            # After executing the orders, update the equity and balances
+            self.equity = ...
+            self.balances_symbol_fr = ...
+            self.update_equity_balances()
             self.set_entry_price()
 
+            """
+            check months, if new month
             self.CapitalAllocator.action() # CapitalAllocator will adjust the equity and balance
             self.PortfolioManager.action() # PortfolioManager will adjust the equity between assets
+            new_equity, new_assigned_capitals =self.rebalance_portfolio()  
+            # self.rebalance_portfolio() will not only will rebalance, if order needs to be placed, it will also place the order
 
+            self.update_equity_balances()
+            self.update_assigned_capitals(new_assigned_capitals)
+            """
+            
             now = datetime.now(timezone.utc)
             next_fetch_time = self.calculate_next_grid(now)
             self.monitor_system_health()
@@ -268,3 +321,20 @@ class RealtimeDealer:
 
     def get_entry_price(self, symbol):
         return self.entry_prices[symbol]
+    
+
+    def check_rebalance(self):
+        """
+        Check if the portfolio needs rebalancing based on the current asset allocation.
+        """
+        pass
+
+    def rebalance_portfolio(self):
+        """
+        This function will be called periodically to rebalance the portfolio based on the current asset allocation.
+        Rebalance the portfolio based on the current asset allocation.
+        """
+        """Holder for the rebalance logic."""
+        new_allocations = ...
+        self.Strategy.set_assigned_capitals(new_allocations)
+        self.RiskManager.set_assigned_capitals(new_allocations)

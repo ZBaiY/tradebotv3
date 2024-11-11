@@ -20,6 +20,7 @@ class RiskManager:
         """
         self.equity = None
         self.balances = None
+        self.assigned_calpitals = {}
         self.data_handler = data_handler
         self.symbols = self.data_handler.symbols
         self.signal_processor = signal_processor
@@ -31,21 +32,41 @@ class RiskManager:
         self.risk_managers = {}
         self.initialize_risk_managers()
 
-    def initialize_risk_managers(self):
-        for symbol in self.symbols:
-                self.risk_managers[symbol] = srMan.SingleRiskManager(symbol, self.config[symbol]["risk_manager"])
-    
-    def set_entry_price(self, entry_price):
-        self.entry_price = entry_price
-        for symbol in self.symbols:
-            self.risk_managers[symbol].set_entry_price(entry_price[symbol])
-    
     def set_equity(self, equity):
         self.equity = equity
 
     def set_balances(self, balances):
         self.balances = balances
 
+    def set_assigned_capitals(self, assigned_capitals):
+        self.assigned_calpitals = assigned_capitals
+
+    def update_balances(self, balances):
+        self.balances = balances
+        for symbol in self.symbols:
+            self.risk_managers[symbol].set_balance(self.balances[symbol])
+    def update_equity(self, equity):
+        self.equity = equity
+
+    def update_assigned_capitals(self, assigned_capitals):
+        self.assigned_calpitals = assigned_capitals
+        for symbol in self.symbols:
+            self.risk_managers[symbol].set_assigned_capital(self.assigned_calpitals[symbol])
+
+    
+    def initialize_singles(self):
+        for symbol in self.symbols:
+                self.risk_managers[symbol] = srMan.SingleRiskManager(symbol, self.config[symbol]["risk_manager"])
+                self.risk_managers[symbol].set_balance(self.equity)
+                self.risk_managers[symbol].set_assigned_capital(self.assigned_calpitals[symbol])
+    
+        
+    
+    def set_entry_price(self, entry_price):
+        self.entry_price = entry_price
+        for symbol in self.symbols:
+            self.risk_managers[symbol].set_entry_price(entry_price[symbol])
+    
     ### Calculate stop-loss take-profit and postion size
     def calculate_stp(self, symbol): 
         for symbol in self.symbols:
@@ -54,6 +75,18 @@ class RiskManager:
             self.risk_managers[symbol].calculate_take_profit()
             self.risk_managers[symbol].calculate_position_size(self.equity, self.balances)
 
+    def request_prediction(self, predictions):
+        for symbol in self.symbols:
+            self.risk_managers[symbol].request_prediction(predictions[symbol])
+
+    def request_data(self, datahandler, column):
+        return datahandler.get_data(self.symbol)[column]
+
+    def request_signal(self, signal_processor):
+        return signal_processor.get_signal(self.symbol)
+    
+    def request_indicators(self, feature_extractor):
+        return feature_extractor.get_indicators(self.symbol)
 
     def update_risk_parameters(self, new_stop_loss, new_take_profit):
         """

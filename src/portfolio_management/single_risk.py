@@ -18,6 +18,8 @@ class SingleRiskManager:
             "take_profit": 0.1
             }
         """
+        self.balance = None
+        self.assigned_capital = None
         self.symbol = symbol
         self.stop_method = config.get("stop_method", "static")
         self.stop_params = config.get("stop_params", {})
@@ -26,6 +28,7 @@ class SingleRiskManager:
         self.position_method = config.get("position_method", "static")
         self.postion_params = config.get("position_params", {})
         self.entry_price = None
+        self.prediction = None
         
         self.setup_stop()
         self.setup_take()
@@ -39,6 +42,11 @@ class SingleRiskManager:
         self.take_profit = None
         self.stop_loss = None
 
+    def set_balance(self, balance):
+        self.balance = balance
+    def set_assigned_capital(self, assigned_capital):
+        self.assigned_capital = assigned_capital
+        
     def read_json_file(file_path):
         """
         Read a JSON file and return its contents as a Python object.
@@ -124,6 +132,8 @@ class SingleRiskManager:
             self.input_stop['max_price'] = max(look_back_prices)
         if "entry_price" in self.required_stop_fields:
             self.input_stop['entry_price'] = self.entry_price
+        if "prediction" in self.required_stop_fields:
+            self.input_stop['prediction'] = self.prediction
         
         if "current_price" in self.required_take_fields:
             self.input_take['current_price'] = datahandler.get_last_price(self.symbol)['close']
@@ -132,8 +142,17 @@ class SingleRiskManager:
             self.input_take['max_price'] = max(look_back_prices)
         if "entry_price" in self.required_take_fields:
             self.input_take['entry_price'] = self.entry_price
+        if "prediction" in self.required_take_fields:
+            self.input_take['prediction'] = self.prediction
+
+
         if "current_price" in self.required_position_fields:
             self.input_position['current_price'] = datahandler.get_last_price(self.symbol)['close']
+        if "prediction" in self.required_position_fields:
+            self.input_position['prediction'] = self.prediction
+
+    def request_prediction(self, prediction):
+        self.prediction = prediction
         
     def calculate_stop_loss(self):
         if self.stop_method == "atr":
@@ -142,8 +161,8 @@ class SingleRiskManager:
             self.stop_loss = StopLoss.trailing_stop_loss(self.trail_percent, **self.input_stop)
         elif self.stop_method == "static":
             self.stop_loss = StopLoss.static_stop_loss(self.stop_loss_percent, **self.input_stop)
-        elif self.stop_method == "risk_reward":
-            self.stop_loss = StopLoss.risk_reward_take_profit(self.risk_reward_ratio, **self.input_stop)
+        #elif self.stop_method == "risk_reward":
+        #    self.stop_loss = StopLoss.risk_reward_take_profit(self.risk_reward_ratio, **self.input_stop)
         elif self.stop_method == "custom_1":
             ###### This needs to be updated (trend_dir) ######
             self.stop_loss = StopLoss.custom_1(self.atr_multiplier, self.trail_percent, self.stop_loss_percent, **self.input_stop)
@@ -174,7 +193,9 @@ class SingleRiskManager:
             self.position_size = PositionSizing.fixed_fractional_position_size(self.risk_percentage, **self.input_position)
         else:
             raise ValueError("Invalid method for position sizing.")
-
+    
+    
+        
     def get_stop_loss(self):
         return self.stop_loss
     def get_take_profit(self):

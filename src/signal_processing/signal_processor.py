@@ -105,6 +105,9 @@ class SignalProcessor:
         self.apply_filters()
         self.apply_transform()     
 
+    def get_signal(self, symbol):
+        return self.processed_data[symbol]
+
 
 
 
@@ -190,6 +193,9 @@ class NonMemSignalProcessor:
         processed_data = self.apply_filters(processed_data)
         processed_data = self.apply_transform(processed_data)
         return processed_data    
+    
+    def get_signal(self, symbol):
+        return self.apply_all()[symbol]
 
 
 """if __name__ == "__main__":

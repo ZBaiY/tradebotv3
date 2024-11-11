@@ -1,38 +1,90 @@
 from base_strategy import BaseStrategy
 
+"""This Module will contains the prediction and models for multiple assets."""
+
 class MultiAssetStrategy(BaseStrategy):
-    def __init__(self, datahandler, portfolio_manager, feature_module=None, signal_processor=None):
+    def __init__(self, datahandler, risk_manager, feature_module=None, signal_processor=None):
         """
         Strategy class for trading
         multiple assets simultaneously.
         """
-        super().__init__(datahandler, portfolio_manager, feature_module, signal_processor)
-        self.model = None
+        super().__init__(datahandler, risk_manager, feature_module, signal_processor)
         self.current_data = {}
         self.processed_data = {}
-        print("Initialized MultiAssetStrategy")
+        self.predictions = {}
+        self.signals = {}
+        self.strategies = {}
         
-    def initialize(self):
-        """Set up parameters for multi-asset trading."""
-        self.symbols = ...
-    def update(self, market_data):
-        """Update strategy with new market data for multiple assets."""
-        self.current_data = {asset: market_data.get(asset, {}) for asset in self.assets}
-        if self.feature_module:
-            self.processed_data = {asset: self.feature_module.process_data(data) for asset, data in self.current_data.items()}
-        print("Updated market data for multiple assets")
+    def initialize_singles(self):
+        for symbol in self.symbols:
+            self.strategies[symbol] = ...
+            self.strategies[symbol].initialize(self.risk_manager.risk_managers[symbol])
+            self.strategies[symbol].set_equity(self.equity)
+            self.strategies[symbol].set_balances(self.balances)
+            self.strategies[symbol].set_assigned_capitals(self.assigned_calpitals)
+    
+    
+    def pre_run(self):
+        rebanlance_need = self.check_rebalance()
+        if rebanlance_need:
+            self.rebalance_portfolio()
 
-    def calculate_signals(self):
-        """Calculate buy/sell signals for each asset based on predictions."""
-        signals = {}
-        for asset, data in self.current_data.items():
-            prediction = self.model.predict(data)
-            signal = {'action': 'buy', 'quantity': 1} if prediction > 0.5 else {'action': 'sell', 'quantity': 1}
-            signals[asset] = self.apply_stop_loss_take_profit(signal)
-        return signals
+    def run_prediction(self, data):
+        """
+        Run prediction on the given data.
+        """
+        self.predictions = self.model.predict(data)
+        self.pred_to_riskmanager()
+        self.check_risk() ### This step can probably generate a signal
+        self.apply_stp()
+        self.generate_signals()
 
-    def apply_stop_loss_take_profit(self, signal):
-        """Apply stop loss/take profit to each asset's signal."""
-        stop_loss, take_profit = self.portfolio_manager.get_stop_loss_take_profit()
-        print("Applying SL/TP for each asset - SL: {}, TP: {}".format(stop_loss, take_profit))
-        return signal
+        """
+        Reminder: There is request_data, etc. in the SingleAssetStrategy class, For 
+        """
+
+
+
+    def update_equity(self, equity):
+        self.equity = equity
+        for symbol in self.symbols:
+            self.strategies[symbol].set_equity(equity)
+    
+    def update_balances(self, balances):
+        self.balances = balances
+        for symbol in self.symbols:
+            self.strategies[symbol].set_balances(balances)
+    
+    def update_assigned_capitals(self, assigned_capitals):
+        self.assigned_calpitals = assigned_capitals
+        for symbol in self.symbols:
+            self.strategies[symbol].set_assigned_capitals(assigned_capitals)
+
+    def generate_signals(self):
+        """
+        Generate buy/sell signals based on predictions and processed data.
+        """
+        pass
+
+    def pred_to_riskmanager(self):
+        """Share prediction with RiskManager."""
+        self.risk_manager.request_prediction(self.predictions)
+
+
+    def apply_stp(self, trade_signal):
+        """
+        stp: stop loss and take profit and position size
+        Adjust trade signal according to stop loss and take profit from portfolio manager.
+        :param trade_signal: Signal to be adjusted
+        """
+        stop_loss, take_profit = self.risk_manager.calculate_stp()
+        # Apply SL/TP logic to the trade_signal here
+
+        
+    def check_risk(self):
+        """
+        Check if the current risk level is within the acceptable range.
+        """
+        pass
+
+        
