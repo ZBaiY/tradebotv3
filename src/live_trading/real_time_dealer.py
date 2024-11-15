@@ -147,7 +147,7 @@ class RealtimeDealer:
         # Strategy depends on RiskManager so it should be initialized after RiskManager
         self.Strategy.initialize_singles()    
 
-    def initialize(self):
+    def run_initialization(self):
         """
         Fist read the current equity and balance, and portfolio manager from logs
         Then set the equity and balance to the strategy, risk_manager, and portfolio

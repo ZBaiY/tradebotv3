@@ -3,12 +3,14 @@ from base_strategy import BaseStrategy
 """This Module will contains the prediction and models for multiple assets."""
 
 class MultiAssetStrategy(BaseStrategy):
-    def __init__(self, datahandler, risk_manager, feature_module=None, signal_processor=None):
+    def __init__(self, datahandler, risk_manager, feature_module=None, signal_processors=None):
         """
         Strategy class for trading
         multiple assets simultaneously.
+        there might be multiple signal processors
+        signal_processors: [signal_processor1, signal_processor2, ...]
         """
-        super().__init__(datahandler, risk_manager, feature_module, signal_processor)
+        super().__init__(datahandler, risk_manager, feature_module, signal_processors)
         self.current_data = {}
         self.processed_data = {}
         self.predictions = {}
@@ -20,10 +22,9 @@ class MultiAssetStrategy(BaseStrategy):
             self.strategies[symbol] = ...
             self.strategies[symbol].initialize(self.risk_manager.risk_managers[symbol])
             self.strategies[symbol].set_equity(self.equity)
-            self.strategies[symbol].set_balances(self.balances)
-            self.strategies[symbol].set_assigned_capitals(self.assigned_calpitals)
-    
-    
+            self.strategies[symbol].set_balances(self.balances[symbol])
+            self.strategies[symbol].set_assigned_capitals(self.assigned_calpitals[symbol])    
+
     def pre_run(self):
         rebanlance_need = self.check_rebalance()
         if rebanlance_need:

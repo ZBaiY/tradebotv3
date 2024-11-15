@@ -21,10 +21,13 @@ All the model will be trained by using their trusted length's prediction.
 
 
 class BaseModel:
-    def __init__(self, data_handler):
+    def __init__(self, symbol, data_handler, signal_processors, feature_extractor):
+        self.symbol = symbol
         self.trusted_future = 0
         self.forcast_length = 30
         self.data_handler = data_handler
+        self.signal_processors = signal_processors
+        self.feature_extractor = feature_extractor
         self.symbols = self.data_handler.symbols
         self.prediction = []
         
@@ -43,10 +46,12 @@ class BaseModel:
     def evaluate(self, data):
         # Evaluation method for all models
         raise NotImplementedError("Evaluate method must be implemented by the subclass")
+    
 
 class ForTesting(BaseModel):
-    def __init__(self, data_handler):
+    def __init__(self, symbol, data_handler):
         super().__init__(data_handler)
+        self.symbol = symbol
         self.trusted_future = 10
         es_filter = filter.ExponentialSmoothingFilter(alpha=0.3)
         rt_trans = transform.LogReturnTransformer()

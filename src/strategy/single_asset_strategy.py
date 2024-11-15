@@ -4,6 +4,19 @@ For predicting from model and request risk manager for stop loss and take profit
 No need to import the BaseStrategy class here.
 """
 
+# base_model.py
+import sys
+import os
+# Add the src directory to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+from src.data_handling.real_time_data_handler import RealTimeDataHandler
+from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor
+from src.models.base_model import ForTesting
+import src.models.ml_model as ml_model
+import src.models.physics_model as physics_model
+import src.models.statistical_model as stat_model
+
 class SingleAssetStrategy:
     def __init__(self, symbol, config):
         """
@@ -13,7 +26,7 @@ class SingleAssetStrategy:
         self.symbol = symbol
         self.prediction = None
         self.risk_manager = None
-        self.model = config.get('model', None)
+        self.model_type = config.get('model', None)
         self.params = config.get('params', {})
 
 
@@ -22,6 +35,7 @@ class SingleAssetStrategy:
         Initialize strategy parameters.
         """
         self.risk_manager = risk_manager
+        self.model = ...
 
     def request_data(self, datahandler, column):
         """

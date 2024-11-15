@@ -7,7 +7,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 class SingleRiskManager:
-    def __init__(self, symbol, config):
+    def __init__(self, symbol, config, datahandler, signal_processor, feature_extractor):
         """
         Parameters:
             symbol (str): Crypto symbol.
@@ -21,6 +21,10 @@ class SingleRiskManager:
         self.balance = None
         self.assigned_capital = None
         self.symbol = symbol
+        self.datahandler = datahandler
+        self.signal_processor = signal_processor
+        self.feature_extractor = feature_extractor
+        
         self.stop_method = config.get("stop_method", "static")
         self.stop_params = config.get("stop_params", {})
         self.take_method = config.get("take_method", "static")
@@ -46,7 +50,10 @@ class SingleRiskManager:
         self.balance = balance
     def set_assigned_capital(self, assigned_capital):
         self.assigned_capital = assigned_capital
-        
+    def set_manager(self, signal_processor, feature_extractor):
+        self.signal_processor = signal_processor
+        self.feature_extractor = feature_extractor
+
     def read_json_file(file_path):
         """
         Read a JSON file and return its contents as a Python object.
@@ -121,14 +128,14 @@ class SingleRiskManager:
             raise ValueError("Invalid method for position sizing.")
         
 
-    def request_data(self, datahandler, features, signal_processor):
+    def request_data(self):
         # The requested data will be written in files under the folder src/model_details/...
         if "current_price" in self.required_stop_fields:
-            self.input_stop['current_price'] = datahandler.get_last_price(self.symbol)['close']
+            self.input_stop['current_price'] = self.datahandler.get_last_price(self.symbol)['close']
         if "atr" in self.required_stop_fields:
-            self.input_stop['atr'] = features.get_last_indicator(self.symbol, 'atr')
+            self.input_stop['atr'] = self.features.get_last_indicator(self.symbol, 'atr')
         if "max_price" in self.required_stop_fields:
-            look_back_prices = datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
+            look_back_prices = self.datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
             self.input_stop['max_price'] = max(look_back_prices)
         if "entry_price" in self.required_stop_fields:
             self.input_stop['entry_price'] = self.entry_price
@@ -136,9 +143,9 @@ class SingleRiskManager:
             self.input_stop['prediction'] = self.prediction
         
         if "current_price" in self.required_take_fields:
-            self.input_take['current_price'] = datahandler.get_last_price(self.symbol)['close']
+            self.input_take['current_price'] = self.datahandler.get_last_price(self.symbol)['close']
         if "max_price" in self.required_take_fields:
-            look_back_prices = datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
+            look_back_prices = self.datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
             self.input_take['max_price'] = max(look_back_prices)
         if "entry_price" in self.required_take_fields:
             self.input_take['entry_price'] = self.entry_price
@@ -147,7 +154,7 @@ class SingleRiskManager:
 
 
         if "current_price" in self.required_position_fields:
-            self.input_position['current_price'] = datahandler.get_last_price(self.symbol)['close']
+            self.input_position['current_price'] = self.datahandler.get_last_price(self.symbol)['close']
         if "prediction" in self.required_position_fields:
             self.input_position['prediction'] = self.prediction
 

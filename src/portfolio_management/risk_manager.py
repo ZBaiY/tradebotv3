@@ -56,8 +56,8 @@ class RiskManager:
     
     def initialize_singles(self):
         for symbol in self.symbols:
-                self.risk_managers[symbol] = srMan.SingleRiskManager(symbol, self.config[symbol]["risk_manager"])
-                self.risk_managers[symbol].set_balance(self.equity)
+                self.risk_managers[symbol] = srMan.SingleRiskManager(symbol, self.config[symbol]["risk_manager"], self.data_handler, self.signal_processor, self.feature_handler)
+                self.risk_managers[symbol].set_balance(self.balances[symbol])
                 self.risk_managers[symbol].set_assigned_capital(self.assigned_calpitals[symbol])
     
         
@@ -70,7 +70,6 @@ class RiskManager:
     ### Calculate stop-loss take-profit and postion size
     def calculate_stp(self, symbol): 
         for symbol in self.symbols:
-            self.risk_managers[symbol].request_data(self.data_handler, self.signal_processor, self.feature_handler)
             self.risk_managers[symbol].calculate_stop_loss()
             self.risk_managers[symbol].calculate_take_profit()
             self.risk_managers[symbol].calculate_position_size(self.equity, self.balances)
@@ -79,14 +78,6 @@ class RiskManager:
         for symbol in self.symbols:
             self.risk_managers[symbol].request_prediction(predictions[symbol])
 
-    def request_data(self, datahandler, column):
-        return datahandler.get_data(self.symbol)[column]
-
-    def request_signal(self, signal_processor):
-        return signal_processor.get_signal(self.symbol)
-    
-    def request_indicators(self, feature_extractor):
-        return feature_extractor.get_indicators(self.symbol)
 
     def update_risk_parameters(self, new_stop_loss, new_take_profit):
         """

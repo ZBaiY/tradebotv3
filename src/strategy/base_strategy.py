@@ -10,7 +10,7 @@ from src.data_handling.real_time_data_handler import RealTimeDataHandler, Loggin
 
 
 class BaseStrategy():
-    def __init__(self, datahandler, risk_manager, feature_extractor=None, signal_processor=None):
+    def __init__(self, datahandler, risk_manager, feature_extractor=None, signal_processors=None):
         """
         Base class for all strategies.
 
@@ -18,6 +18,7 @@ class BaseStrategy():
         :param portfolio_manager: Portfolio management module instance
         :param feature_module: Optional feature module for data processing
         :param signal_processor: Optional signal processing module for processed data
+        signal_processor: [signal_processor1, signal_processor2, ...]
         """
         self.equity = None
         self.balances = None
@@ -25,7 +26,7 @@ class BaseStrategy():
         self.data_handler = datahandler
         self.risk_manager = risk_manager        
         self.symbols = None
-        self.signal_processor = signal_processor
+        self.signal_processors = signal_processors
         self.features = feature_extractor
         self.allocation = None
         self.cryp_dist = None
