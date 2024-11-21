@@ -18,8 +18,11 @@ class SingleRiskManager:
             "take_profit": 0.1
             }
         """
+
         self.balance = -1 # initially set to -1, to debug if it is set
         self.assigned_percentage = -1
+        self.entry_price = -1
+        self.position = -1
         self.symbol = symbol
         self.datahandler = datahandler
         self.signal_processor = signal_processor
@@ -31,7 +34,7 @@ class SingleRiskManager:
         self.take_params = config.get("take_params", {})
         self.position_method = config.get("position_method", "static")
         self.postion_params = config.get("position_params", {})
-        self.entry_price = -1
+
         self.prediction = None
         
         self.setup_stop()
@@ -45,6 +48,9 @@ class SingleRiskManager:
         self.input_position = None
         self.take_profit = None
         self.stop_loss = None
+
+    def set_position(self, position):
+        self.position = position
 
     def set_balance(self, balance):
         self.balance = balance
@@ -201,7 +207,11 @@ class SingleRiskManager:
         else:
             raise ValueError("Invalid method for position sizing.")
     
-    
+    def calculate_stp(self):
+        self.request_data()
+        self.calculate_stop_loss()
+        self.calculate_take_profit()
+        self.calculate_position_size()
         
     def get_stop_loss(self):
         return self.stop_loss

@@ -176,8 +176,8 @@ class RealtimeDealer:
     def equity_balance_tools(self):
         self.RiskManager.set_equity(self.equity)
         self.RiskManager.set_balances(self.balances_symbol_fr)   
-        self.Strategy.set_equity(self.equity)
-        self.Strategy.set_balances(self.balances_symbol_fr)
+        self.Strategy.set_equity(self.equity) # Maybe redundant
+        self.Strategy.set_balances(self.balances_symbol_fr)  # Maybe redundant
         self.PortfolioManager.set_equity(self.equity)
         self.PortfolioManager.set_balances(self.balances_symbol_fr)
         self.CapitalAllocator.set_equity(self.equity)
@@ -186,9 +186,9 @@ class RealtimeDealer:
     
     def update_equity_balances(self):
         self.RiskManager.update_equity(self.equity)
-        self.Strategy.update_equity(self.equity)
+        self.Strategy.update_equity(self.equity) # Maybe redundant
         self.RiskManager.update_balances(self.balances_symbol_fr)
-        self.Strategy.update_balances(self.balances_symbol_fr)
+        self.Strategy.update_balances(self.balances_symbol_fr) # Maybe redundant
 
 ########################### Block 1: equity, balances, entry prices, asigned capitals ########################################
 
@@ -208,7 +208,6 @@ class RealtimeDealer:
         self.initialize_PortfolioManager(self.equity, self.balances_symbol_fr, self.allocation_cryp) 
         self.assigned_percentage = self.PortfolioManager.get_assigned_percentage()
         self.initialize_Straegy(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.assigned_percentage)          # Model, RiskManager is initialized here
-
         self.set_assigned_percentage(self.assigned_percentage)
         self.set_entry_price()
         
@@ -231,11 +230,11 @@ class RealtimeDealer:
         #### will set the equity, balances, assigned_capitals, initialize the singles
         self.RiskManager = RiskManager(equity, balances, allocation_cryp, assigned_percentage, s_config, self.data_handler, self.signal_processors, self.features)
         self.RiskManager.initialize_singles()
+        self.RiskManager.calculate_position()
         #### will set the equity, balances, assigned_capitals, initialize the models
         self.Strategy = MultiAssetStrategy(equity, balances, allocation_cryp, assigned_percentage, self.data_handler, self.RiskManager, m_config, self.features, self.signal_processors)
         self.Strategy.initialize_singles()
 
-        pass
 ########################### Block 2: Initialization for the tools ########################################
 
 

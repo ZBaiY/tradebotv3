@@ -5,7 +5,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from src.data_handling.real_time_data_handler import RealTimeDataHandler
 from src.signal_processing.filters import MovingAverageFilter, ExponentialSmoothingFilter
-from src.signal_processing.transform import ReturnTransformer, LogReturnTransformer, ScalerTransformer, FourierTransformer
+from src.signal_processing.transform import ReturnTransformer, LogReturnTransformer, ScalerTransformer, FourierTransformer, ScalerSymbolTransformer
 import numpy as np
 # from datetime import datetime, timezone
 # import time
@@ -126,8 +126,6 @@ class NonMemSignalProcessor:
         self.data_handler = data_handler
         self.filters = filters if filters is not None else []
         self.trans = transform if transform is not None else []
-        if isinstance(data_handler, RealTimeDataHandler):
-            self.data_handler.subscribe(self)  # Subscribe to the DataHandler
         self.symbols = self.data_handler.symbols
         self.column = column
         # Initialize the processed data with the cleaned data, it has the same window size as the cleaned data
@@ -182,6 +180,91 @@ class NonMemSignalProcessor:
     def apply_all(self):
         """First filter the data, then apply transformations."""
         processed_data = {symbol: self.data_handler.cleaned_data[symbol][self.column].copy() for symbol in self.symbols}        
+        processed_data = self.apply_filters(processed_data)
+        processed_data = self.apply_transform(processed_data)
+        return processed_data
+    ####### Real Time Updating Functions ########
+
+
+    def update(self, new_data):
+        """Update the processed data with new incoming data."""
+        """In most of cases, incrementally is not possible, due to the stacking of multiple filters and transformers."""
+        processed_data = {symbol: self.data_handler.cleaned_data[symbol][self.column].copy() for symbol in self.symbols}        
+        processed_data = self.apply_filters(processed_data)
+        processed_data = self.apply_transform(processed_data)
+        return processed_data    
+    
+    def get_signal(self, symbol):
+        return self.apply_all()[symbol]
+    
+
+
+class NonMemSymbolProcessor:
+    def __init__(self, symbol, data_handler, column, filters=None, transform=None):
+        """
+        SignalProcessor class to process data signals.
+        :filter: list, a list of filters to apply to the data, in order
+        :transform: list, a list of transformations to apply to the data, in order
+        """
+        if self.data_handler.window_size is None:
+            print("Please load the data handler with the cleaned data before using the SignalProcessor")
+            raise Exception("Data handler not loaded")
+        self.data_handler = data_handler
+        self.filters = filters if filters is not None else []
+        self.trans = transform if transform is not None else []
+        self.symbol = symbol
+        self.column = column
+        # Initialize the processed data with the cleaned data, it has the same window size as the cleaned data
+        self.lookback = 1
+        self.k_space = False
+
+        self.na_num = 0
+        for filter_instance in self.filters:
+            self.na_num += filter_instance.rolling_window-1 
+        self.window_size = self.data_handler.window_size-self.na_num
+
+        for filter_instance in self.filters:
+            if filter_instance.lookback == 'all':
+                self.lookback = self.window_size
+            else: self.lookback = min(max(filter_instance.lookback, self.lookback), self.window_size)
+        for trans_instance in self.trans:
+            if trans_instance.lookback == 'all':
+                self.lookback = self.window_size
+                if isinstance(trans_instance, FourierTransformer):
+                    self.k_space = True
+            else: self.lookback = min(max(trans_instance.lookback, self.lookback), self.window_size)
+            """if isinstance(trans_instance, ScalerTransformer):
+                for symbol in self.symbols:
+                    trans_instance.fit_scaler(symbol, self.processed_data[symbol])"""
+        
+
+    def apply_filters(self, processed_data):
+        for filter_instance in self.filters:
+            recent_timestamps = self.data_handler.cleaned_data[self.symbol].tail(self.window_size).index
+            processed_data[self.symbol] = filter_instance.apply(processed_data[self.symbol])
+            processed_data[self.symbol] = processed_data[self.symbol].reindex(recent_timestamps)
+
+    def apply_transform(self, processed_data):
+        # Apply all filters to the data
+        k_space = False
+        for trans_instance in self.trans:
+            if not isinstance(trans_instance, FourierTransformer) and not k_space:
+                recent_timestamps = self.data_handler.cleaned_data[self.symbol].tail(self.window_size).index
+                if isinstance(trans_instance, ScalerSymbolTransformer):
+                    if not trans_instance.load:
+                        trans_instance.fit_scaler(self.symbol, processed_data[self.symbol])
+                    processed_data[self.symbol] = trans_instance.transform(self.symbol, processed_data[self.symbol])
+                    processed_data[self.symbol] = processed_data[self.symbol].reindex(recent_timestamps)
+                    continue
+                processed_data[self.symbol] = trans_instance.transform(processed_data[self.symbol])
+                processed_data[self.symbol] = processed_data[self.symbol].reindex(recent_timestamps)
+            else:
+                processed_data[self.symbol] = trans_instance.transform(processed_data[self.symbol])
+                k_space = True
+
+    def apply_all(self):
+        """First filter the data, then apply transformations."""
+        processed_data = self.data_handler.cleaned_data[self.symbol][self.column].copy()        
         processed_data = self.apply_filters(processed_data)
         processed_data = self.apply_transform(processed_data)
         return processed_data

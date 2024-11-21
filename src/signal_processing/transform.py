@@ -126,7 +126,42 @@ class ScalerTransformer(TransformerBase):
         transformed_data = self.scaler[symbol].transform(data_copy.values.reshape(-1, 1))
         return pd.DataFrame(transformed_data, index=data.index)
         
+class ScalerSymbolTransformer(TransformerBase):
+    def __init__(self, symbol=None, scaler=None):
+        super().__init__()
+        self.symbol = symbol
+        self.lookback = 1 # only one data point at a time for updating
+        if scaler is None:
+            raise ValueError("A scaler object must be provided.")
+        elif scaler == 'minmax':
+            self.scaler = MinMaxScaler()
+        elif scaler == 'standard':
+            self.scaler = StandardScaler()
+        self.load = False
+        
+    def load_scaler(self):
+        """Load the scaler from a file."""
+        self.load = True
+        pass
+    
+    def fit_scaler(self, data):
+        """Update the scaler with new data."""
+        """Will be used as initilization, as well as for updating the scaler per week."""
+        self.scaler.fit(data.values.reshape(-1, 1))
+        self.load = True
 
+    def on_new_data(self, new_data):
+        """transform the new data."""
+        data_copy = new_data.copy()
+        transformed_data = self.scaler.transform(data_copy.values.reshape(-1, 1))
+        return pd.DataFrame(transformed_data, index=new_data.index)
+
+    def transform(self, data):
+        """Apply the scaler to the data."""
+        data_copy = data.copy()
+        transformed_data = self.scaler.transform(data_copy.values.reshape(-1, 1))
+        return pd.DataFrame(transformed_data, index=data.index)
+        
 
 
 

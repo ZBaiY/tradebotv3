@@ -20,17 +20,23 @@ class BaseStrategy():
         :param signal_processor: Optional signal processing module for processed data
         signal_processor: [signal_processor1, signal_processor2, ...]
         """
+
+
+########### I believe the equity, balances, assigned_percentage, and allocation_cryp are handled by the risk manager
+########### They are abit redundant here, check later
         self.equity = equity
         self.balances = balances
         self.assigned_percentage = assigned_percentage
+        self.allocation_cryp = allocation_cryp
+        self.cryp_dist = -1
 
+    
         self.data_handler = datahandler
         self.risk_manager = risk_manager        
         self.symbols = self.data_handler.symbols
         self.signal_processors = signal_processors
         self.features = feature_extractor
-        self.allocation_cryp = allocation_cryp
-        self.cryp_dist = -1
+
 
 
 

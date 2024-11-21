@@ -1,6 +1,18 @@
-from base_strategy import BaseStrategy
+import json
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+from src.strategy.base_strategy import BaseStrategy
+from src.strategy.single_asset_strategy import SingleAssetStrategy
 
 """This Module will contains the prediction and models for multiple assets."""
+"""
+The risk manager as a instance in this class will only be used for 
+to apply strategies that generate signals for the multiple assets.
+Strategy class by it self will not do the risk management calculations.
+"""
+
 
 class MultiAssetStrategy(BaseStrategy):
     def __init__(self, equity, balances, allocation_cryp, assigned_percentage, datahandler, risk_manager, m_config = None, feature_module=None, signal_processors=None):
@@ -13,41 +25,40 @@ class MultiAssetStrategy(BaseStrategy):
         s_config: strategy configuration
         """
         super().__init__(equity, balances, allocation_cryp, assigned_percentage, datahandler, risk_manager, feature_module, signal_processors)
-        self.current_data = {}
-        self.processed_data = {}
-        self.predictions = {}
         self.signals = {}
-        self.strategies = {}
+        self.m_config = m_config
         
     def initialize_singles(self):
         for symbol in self.symbols:
-            self.strategies[symbol] = ...
+            self.strategies[symbol] = SingleAssetStrategy(symbol, self.m_config[symbol], self.risk_manager.risk_managers[symbol], self.data_handler, self.signal_processors, self.features)
             self.strategies[symbol].initialize(self.risk_manager.risk_managers[symbol])
-            self.strategies[symbol].set_equity(self.equity)
-            self.strategies[symbol].set_balances(self.balances[symbol])
-            self.strategies[symbol].set_assigned_percentage(self.assigned_percentage[symbol])    
 
     def pre_run(self):
         rebanlance_need = self.check_rebalance()
         if rebanlance_need:
             self.rebalance_portfolio()
 
-    def run_prediction(self, data):
+    def run_orchestra(self, data):
         """
         Run prediction on the given data.
         """
-        self.predictions = self.model.predict(data)
-        self.pred_to_riskmanager()
-        self.check_risk() ### This step can probably generate a signal
-        self.apply_stp()
-        self.generate_signals()
+        for symbol in self.symbols:
+
+            self.strategies[symbol].run_prediction(data[symbol])
+            self.signals[symbol] = self.strategies[symbol].signal_decision()
 
         """
         Reminder: There is request_data, etc. in the SingleAssetStrategy class, For 
         """
 
+    def get_signals(self):
+        return self.signals
 
 
+
+
+########### I believe the equity, balances, assigned_percentage, and allocation_cryp are handled by the risk manager
+########### They are abit redundant here, check later
     def update_equity(self, equity):
         self.equity = equity
         for symbol in self.symbols:
@@ -63,31 +74,8 @@ class MultiAssetStrategy(BaseStrategy):
         for symbol in self.symbols:
             self.strategies[symbol].set_assigned_percentage(assigned_percentage)
 
-    def generate_signals(self):
-        """
-        Generate buy/sell signals based on predictions and processed data.
-        """
-        pass
-
-    def pred_to_riskmanager(self):
-        """Share prediction with RiskManager."""
-        self.risk_manager.request_prediction(self.predictions)
-
-
-    def apply_stp(self, trade_signal):
-        """
-        stp: stop loss and take profit and position size
-        Adjust trade signal according to stop loss and take profit from portfolio manager.
-        :param trade_signal: Signal to be adjusted
-        """
-        stop_loss, take_profit = self.risk_manager.calculate_stp()
-        # Apply SL/TP logic to the trade_signal here
 
         
-    def check_risk(self):
-        """
-        Check if the current risk level is within the acceptable range.
-        """
-        pass
+
 
         

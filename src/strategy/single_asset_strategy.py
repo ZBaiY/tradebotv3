@@ -12,22 +12,32 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 
 from src.data_handling.real_time_data_handler import RealTimeDataHandler
 from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor
-from src.models.base_model import ForTesting
-import src.models.ml_model as ml_model
-import src.models.physics_model as physics_model
-import src.models.statistical_model as stat_model
+from src.models.base_model import ForTesting as TestModel
+import src.models.ml_model as MLModel
+import src.models.physics_model as PhysModel
+import src.models.statistical_model as StatModel
+
+"""
+The risk manager as a instance in this class will only be used for 
+to apply strategies that generate signals for the multiple assets.
+Strategy class by it self will not do the risk management calculations.
+"""
 
 class SingleAssetStrategy:
-    def __init__(self, symbol, config):
+    def __init__(self, symbol, m_config, risk_manager, data_handler, signal_processor, feature_extractor):
         """
         Strategy class for trading 
         a single asset.
         """
         self.symbol = symbol
         self.prediction = None
-        self.risk_manager = None
-        self.model_type = config.get('model', None)
-        self.params = config.get('params', {})
+        # equity, balance, assigned_percentage are handled within risk managers
+        self.risk_manager = risk_manager
+        self.data_handler = data_handler
+        self.signal_processor = signal_processor
+        self.feature_extractor = feature_extractor   
+        self.model_type = m_config.get('method', None)
+        self.params = m_config.get('params', {})
 
 
     def initialize(self, risk_manager):
@@ -35,7 +45,33 @@ class SingleAssetStrategy:
         Initialize strategy parameters.
         """
         self.risk_manager = risk_manager
-        self.model = ...
+        if not self.model_type:
+            raise ValueError("Model type is not specified.")
+        
+        type_parts = self.model_type.split('_')
+        model_category = type_parts[0]
+        model_variant = type_parts[1]
+
+        if model_category == 'ML':
+            self.model = MLModel(self.symbol, self.data_handler, self.signal_processor, self.feature_extractor, model_variant, **self.params)
+        elif model_category == 'Stat':
+            self.model = StatModel(self.symbol, self.data_handler, self.signal_processor, self.feature_extractor, model_variant, **self.params)
+        elif model_category == 'Phys':
+            self.model = PhysModel(self.symbol, self.data_handler, self.signal_processor, self.feature_extractor, model_variant, **self.params)
+        elif model_category == 'Test':
+            self.model = TestModel(self.symbol, self.data_handler, self.signal_processor, self.feature_extractor, model_variant, **self.params)
+            """Expand the model categories as the tradebot is developed."""
+        else:
+            raise ValueError(f"Unknown model category: {model_category}")
+
+    def set_equity(self, equity):
+        self.equity = equity
+    def set_balance(self, balance):
+        self.balance = balance
+    def set_assigned_percentage(self, assigned_percentage):
+        self.assigned_percentage = assigned_percentage
+
+
 
     def request_data(self, datahandler, column):
         """
@@ -67,12 +103,29 @@ class SingleAssetStrategy:
         Run prediction on the given data.
         """
         self.prediction = self.model.predict(data, **self.params)
+        self.risk_manager.request_prediction(self.prediction)
+        self.risk_manager.calculate_stp()
+
+
+
+    def signal_decision(self):
+        """
+        Make trading decision based on signals.
+        Decision contains hold, buy, sell. And the position size.
+        """
+        return {'decision': 'hold', 'position_size': 0}
 
     def update_parameters(self, new_params):
         """
         Update model parameters.
         """
         self.params = new_params
+    
+    def check_risk(self):
+        """
+        Check if the current risk level is within the acceptable range.
+        """
+        pass
 
     def get_prediction(self):
         """

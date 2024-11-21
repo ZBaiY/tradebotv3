@@ -6,6 +6,14 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 from src.data_handling.real_time_data_handler import RealTimeDataHandler, LoggingHandler
 import src.portfolio_management.single_risk as srMan
 
+#######
+# This module contains multiple risk managers for multiple assets.
+# It is a manager of the risk managers, will not process any data.
+# It will do set up and initialization of the risk managers.
+# As well as being instances of other classes, it will also contain the risk parameters.
+#######
+
+
 class RiskManager:
     def __init__(self, equity, balances, allocation_cryp, assigned_percentage,config, data_handler, signal_processor=None, feature_handler=None):
         """
@@ -21,7 +29,8 @@ class RiskManager:
         self.equity = equity # initially set to -1, to debug if it is set
         self.balances = balances
         self.assigned_percentage = assigned_percentage
-        self.allocation_cryp = allocation_cryp
+        self.allocation_cryp = allocation_cryp # crypto allocation
+        self.position = {}
         self.data_handler = data_handler
         self.symbols = self.data_handler.symbols
         self.signal_processor = signal_processor
@@ -33,7 +42,10 @@ class RiskManager:
         self.risk_managers = {}
 
     def calculate_position(self):
-        pass
+        # Calculate position size based on balance, allocation_cryp and assigned percentage
+        for symbol in self.symbols:
+            self.position[symbol] = self.balances[symbol] / (self.allocation_cryp[symbol] * self.assigned_percentage[symbol])
+            self.risk_managers[symbol].set_position(self.position[symbol])
 
     def set_equity(self, equity):
         self.equity = equity
@@ -72,7 +84,7 @@ class RiskManager:
             self.risk_managers[symbol].set_entry_price(entry_price[symbol])
     
     ### Calculate stop-loss take-profit and postion size
-    def calculate_stp(self, symbol): 
+    def calculate_stp(self, symbol): # Redundant function, stp is calculated in the strategy module.py
         for symbol in self.symbols:
             self.risk_managers[symbol].calculate_stop_loss()
             self.risk_managers[symbol].calculate_take_profit()
