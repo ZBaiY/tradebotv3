@@ -58,6 +58,8 @@ class MultiAssetStrategy(BaseStrategy):
 
 
 ########### I believe the equity, balances, assigned_percentage, and allocation_cryp are handled by the risk manager
+########### Maybe can be used to dobule check the signals are within the assigned percentage
+########### Maybe do the rebalance here
 ########### They are abit redundant here, check later
     def update_equity(self, equity):
         self.equity = equity
@@ -74,8 +76,12 @@ class MultiAssetStrategy(BaseStrategy):
         for symbol in self.symbols:
             self.strategies[symbol].set_assigned_percentage(assigned_percentage)
 
-
-        
+    
+    def check_rebalance(self):
+        """
+        Check if rebalancing is needed.
+        """
+        pass
 
 
         
