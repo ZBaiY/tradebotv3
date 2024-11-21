@@ -10,7 +10,7 @@ from src.data_handling.real_time_data_handler import RealTimeDataHandler, Loggin
 
 
 class BaseStrategy():
-    def __init__(self, datahandler, risk_manager, feature_extractor=None, signal_processors=None):
+    def __init__(self, equity, balances, allocation_cryp, assigned_percentage, datahandler, risk_manager, feature_extractor=None, signal_processors=None):
         """
         Base class for all strategies.
 
@@ -20,21 +20,22 @@ class BaseStrategy():
         :param signal_processor: Optional signal processing module for processed data
         signal_processor: [signal_processor1, signal_processor2, ...]
         """
-        self.equity = None
-        self.balances = None
-        self.assigned_calpitals = {}
+        self.equity = equity
+        self.balances = balances
+        self.assigned_percentage = assigned_percentage
+
         self.data_handler = datahandler
         self.risk_manager = risk_manager        
-        self.symbols = None
+        self.symbols = self.data_handler.symbols
         self.signal_processors = signal_processors
         self.features = feature_extractor
-        self.allocation = None
-        self.cryp_dist = None
-        self.symbols = self.data_handler.symbols
+        self.allocation_cryp = allocation_cryp
+        self.cryp_dist = -1
+
 
 
     def set_allocation_cryp(self, allocation_cryp):
-        self.allocation = allocation_cryp
+        self.allocation_cryp = allocation_cryp
     
     def set_crypto_dist(self, cryp_dist):
         ### cryp_dist is a dictionary with the crypto symbol as the key and the percentage of the portfolio as the value
@@ -47,8 +48,8 @@ class BaseStrategy():
     def set_balances(self, balances):
         self.balances = balances
 
-    def set_assigned_capitals(self, assigned_capitals):
-        self.assigned_calpitals = assigned_capitals
+    def set_assigned_percentage(self, assigned_percentage):
+        self.assigned_percentage = assigned_percentage
 
     def initialize(self):
         """Initialize strategy parameters and any necessary setup."""

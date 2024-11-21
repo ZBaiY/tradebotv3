@@ -3,14 +3,16 @@ from base_strategy import BaseStrategy
 """This Module will contains the prediction and models for multiple assets."""
 
 class MultiAssetStrategy(BaseStrategy):
-    def __init__(self, datahandler, risk_manager, feature_module=None, signal_processors=None):
+    def __init__(self, equity, balances, allocation_cryp, assigned_percentage, datahandler, risk_manager, m_config = None, feature_module=None, signal_processors=None):
         """
         Strategy class for trading
         multiple assets simultaneously.
         there might be multiple signal processors
         signal_processors: [signal_processor1, signal_processor2, ...]
+        m_config: model configuration
+        s_config: strategy configuration
         """
-        super().__init__(datahandler, risk_manager, feature_module, signal_processors)
+        super().__init__(equity, balances, allocation_cryp, assigned_percentage, datahandler, risk_manager, feature_module, signal_processors)
         self.current_data = {}
         self.processed_data = {}
         self.predictions = {}
@@ -23,7 +25,7 @@ class MultiAssetStrategy(BaseStrategy):
             self.strategies[symbol].initialize(self.risk_manager.risk_managers[symbol])
             self.strategies[symbol].set_equity(self.equity)
             self.strategies[symbol].set_balances(self.balances[symbol])
-            self.strategies[symbol].set_assigned_capitals(self.assigned_calpitals[symbol])    
+            self.strategies[symbol].set_assigned_percentage(self.assigned_percentage[symbol])    
 
     def pre_run(self):
         rebanlance_need = self.check_rebalance()
@@ -56,10 +58,10 @@ class MultiAssetStrategy(BaseStrategy):
         for symbol in self.symbols:
             self.strategies[symbol].set_balances(balances)
     
-    def update_assigned_capitals(self, assigned_capitals):
-        self.assigned_calpitals = assigned_capitals
+    def update_assigned_percentage(self, assigned_percentage):
+        self.assigned_percentage = assigned_percentage
         for symbol in self.symbols:
-            self.strategies[symbol].set_assigned_capitals(assigned_capitals)
+            self.strategies[symbol].set_assigned_percentage(assigned_percentage)
 
     def generate_signals(self):
         """

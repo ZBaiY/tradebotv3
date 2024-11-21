@@ -15,7 +15,10 @@ from src.data_handling.real_time_data_handler import RealTimeDataHandler, Loggin
 from src.portfolio_management.risk_manager import RiskManager
 from src.portfolio_management.capital_allocator import CapitalAllocator
 from src.portfolio_management.portfolio_manager import PortfolioManager
-import src.strategy as strategy
+from src.feature_engineering.feature_extractor import FeatureExtractor
+from src.signal_processing.signal_processor import SignalProcessor
+import src.strategy as Strategy
+import src.strategy.multi_asset_strategy as MultiAssetStrategy
 # from src.live_trading.execution_handler import ExecutionHandler
 from src.live_trading.order_manager import OrderManager
 
@@ -33,46 +36,56 @@ To initialize the risk_manager and strategy, we need to read the config files.
 """
 
 class RealtimeDealer:
-    def __init__(self, strategy, capital_allocator, risk_manager, portfolio_manager, api_path = 'config/api_config.json', log_dir='/trade/logs', log_file='real_time_dealer.log'):
-        self.data_handler = RealTimeDataHandler('config/source.json', 'config/fetch_real_time.json')  
+    def __init__(self, datahandler=None, feature_module=None, signal_processors=None, api_path = 'config/api_config.json', log_dir='/trade/logs', log_file='real_time_dealer.log'):
         
+        # Initialize the data baths
+        self.data_handler = datahandler
+        if datahandler is None:
+            self.data_handler = RealTimeDataHandler('config/source.json', 'config/fetch_real_time.json')  
+        self.features = feature_module
+        if feature_module is None:
+            self.features = FeatureExtractor(self.data_handler)
+        self.signal_processors = signal_processors
+        if signal_processors is None:
+            processors_config = json.load(open('config/processors.json', 'r'))
+            self.signal_processors = {}
+            for processor_name, config in processors_config:
+                column = config.get('column', None)
+                self.signal_processors[processor_name] = SignalProcessor(self.data_handler, column=column)
+                self.signal_processors[processor_name].initialize_processors(config)
+        
+        # Initialize the Binance API client and OrderManager
+
         self.api = json.load(open(api_path, 'r'))
         api_key = self.api.get('api_key', None)
         api_secret = self.api.get('api_secret', None)
         self.client = Client(api_key, api_secret)
-        # Initialize OrderManager with API credentials and logging configurations
         self.OrderManager = OrderManager(self.client)
-        self.Strategy = strategy  
-        self.CapitalAllocator = capital_allocator
-        self.RiskManager = risk_manager
-        self.PortfolioManager = portfolio_manager
-    
 
         # Initialize logging handler for the dealer
         self.logger = LoggingHandler(log_dir=log_dir, log_file=log_file).logger
         self.logger.info("RealtimeDealer initialized.")
 
+        # Initialize the variables
         self.symbols = self.data_handler.symbols
-        self.equity = None
-        self.balances_symbol = None
-        self.balances_str = None
-        self.balances_symbol_fr = None # can be touched in total
-        self.assigned_capitals = None
+        self.equity = None # total equity in USDT
+        self.balances_symbol = None # total balance in each symbol
+        self.balances_str = None # total balance in each symbol in string
+        self.balances_symbol_fr = None # free balance in each symbol
+        self.allocation_cryp = None ## Total allocation to crypto
+        self.assigned_percentage = None
         self.entry_prices = {}
-        self.equity_balance()
-        self.equity_balance_tools()
-        self.set_symbols(self.symbols)
-        
 
+        # Initialize the tools
+        self.CapitalAllocator = None
+        self.PortfolioManager = None
+        self.RiskManager = None
+        self.Strategy = None
+
+        # Preparing to run the system
         self.is_running = False 
-    def set_symbols(self, symbols):
-        self.Strategy.set_symbols(symbols)
-        self.RiskManager.set_symbols(symbols)
-        self.PortfolioManager.set_symbols(symbols)
-        self.CapitalAllocator.set_symbols(symbols)
-    
-    
-    
+
+########################### Block 1: equity, balances, entry prices, asigned capitals ########################################
     def equity_balance(self):
         info = self.OrderManager.get_account_info()['balance']
         self.balances_str = info['balances']
@@ -141,29 +154,24 @@ class RealtimeDealer:
         else:
             self.logger.info(f"No open position found for {symbol}. Entry price calculation not applicable.")
             return 0.0
-        
-    def initialize_singles_tools(self):
-        self.RiskManager.initialize_singles()
-        # Strategy depends on RiskManager so it should be initialized after RiskManager
-        self.Strategy.initialize_singles()    
 
-    def run_initialization(self):
-        """
-        Fist read the current equity and balance, and portfolio manager from logs
-        Then set the equity and balance to the strategy, risk_manager, and portfolio
-        Then Initialize the strategy, risk_manager singles
-        Then set the entry prices
-
-        After this function, all the tools are ready to run
-        """
-        pass
-
-    def set_assigned_capitals(self, assigned_capitals):
-        self.assigned_capitals = assigned_capitals
-        self.Strategy.set_assigned_capitals(assigned_capitals)
-        self.RiskManager.set_assigned_capitals(assigned_capitals)
+    def set_assigned_percentage(self, assigned_percentage):
+        self.assigned_percentage = assigned_percentage
+        self.Strategy.set_assigned_percentage(assigned_percentage)
+        self.RiskManager.set_assigned_percentage(assigned_percentage)
     
+    def update_assigned_percentage(self, assigned_percentage):
+        self.assigned_percentage = assigned_percentage
+        self.RiskManager.update_assigned_capitals(assigned_percentage)
+        self.Strategy.update_assigned_percentage(assigned_percentage)
 
+    
+    def set_entry_price(self):
+        entry_prices = {}
+        for symbol in self.symbols:
+            entry_prices[symbol] = self.entry_price(symbol)
+        self.entry_prices = entry_prices
+        self.RiskManager.set_entry_price(self.entry_prices)
 
     def equity_balance_tools(self):
         self.RiskManager.set_equity(self.equity)
@@ -175,26 +183,63 @@ class RealtimeDealer:
         self.CapitalAllocator.set_equity(self.equity)
         self.CapitalAllocator.set_balances(self.balances_symbol_fr)
 
-
+    
     def update_equity_balances(self):
         self.RiskManager.update_equity(self.equity)
         self.Strategy.update_equity(self.equity)
         self.RiskManager.update_balances(self.balances_symbol_fr)
         self.Strategy.update_balances(self.balances_symbol_fr)
 
+########################### Block 1: equity, balances, entry prices, asigned capitals ########################################
 
+########################### Block 2: Initialization for the tools ########################################
+    def run_initialization(self):
+        """
+        Fist read the current equity and balance, and portfolio manager from logs
+        Then set the equity and balance to the strategy, risk_manager, and portfolio
+        Then Initialize the strategy, risk_manager singles
+        Then set the entry prices
 
-    def update_assigned_capitals(self, assigned_capitals):
-        self.assigned_capitals = assigned_capitals
-        self.RiskManager.update_assigned_capitals(assigned_capitals)
-        self.Strategy.update_assigned_capitals(assigned_capitals)
+        After this function, all the tools are ready to run
+        """
+        self.equity_balance()
+        self.initialize_CapitalAllocator(self.equity, self.balances_symbol_fr)
+        self.allocation_cryp = self.CapitalAllocator.get_allcation_cryp() 
+        self.initialize_PortfolioManager(self.equity, self.balances_symbol_fr, self.allocation_cryp) 
+        self.assigned_percentage = self.PortfolioManager.get_assigned_percentage()
+        self.initialize_Straegy(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.assigned_percentage)          # Model, RiskManager is initialized here
 
-    def set_entry_price(self):
-        entry_prices = {}
+        self.set_assigned_percentage(self.assigned_percentage)
+        self.set_entry_price()
+        
+    def initialize_CapitalAllocator(self):
+        # Read from json file
+        pass
+    def initialize_PortfolioManager(self):
+        # Read from json file
+        pass
+
+    def initialize_Straegy(self, equity, balances, allocation_cryp, assigned_percentage):
+        # Read from json file
+        s_config = json.load(open('config/strategy.json', 'r'))
+        m_config = {}
+        r_config = {}
         for symbol in self.symbols:
-            entry_prices[symbol] = self.entry_price(symbol)
-        self.entry_prices = entry_prices
-        self.RiskManager.set_entry_price(self.entry_prices)
+            m_config[symbol] = s_config[symbol]['model']
+            r_config[symbol] = s_config[symbol]['risk_manager']
+
+        #### will set the equity, balances, assigned_capitals, initialize the singles
+        self.RiskManager = RiskManager(equity, balances, allocation_cryp, assigned_percentage, s_config, self.data_handler, self.signal_processors, self.features)
+        self.RiskManager.initialize_singles()
+        #### will set the equity, balances, assigned_capitals, initialize the models
+        self.Strategy = MultiAssetStrategy(equity, balances, allocation_cryp, assigned_percentage, self.data_handler, self.RiskManager, m_config, self.features, self.signal_processors)
+        self.Strategy.initialize_singles()
+
+        pass
+########################### Block 2: Initialization for the tools ########################################
+
+
+
 
     def get_asset_price(self, asset, quote):
         try:
@@ -336,5 +381,5 @@ class RealtimeDealer:
         """
         """Holder for the rebalance logic."""
         new_allocations = ...
-        self.Strategy.set_assigned_capitals(new_allocations)
-        self.RiskManager.set_assigned_capitals(new_allocations)
+        self.Strategy.set_assigned_percentage(new_allocations)
+        self.RiskManager.set_assigned_percentage(new_allocations)

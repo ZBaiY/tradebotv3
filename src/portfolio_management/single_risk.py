@@ -18,8 +18,8 @@ class SingleRiskManager:
             "take_profit": 0.1
             }
         """
-        self.balance = None
-        self.assigned_capital = None
+        self.balance = -1 # initially set to -1, to debug if it is set
+        self.assigned_percentage = -1
         self.symbol = symbol
         self.datahandler = datahandler
         self.signal_processor = signal_processor
@@ -31,7 +31,7 @@ class SingleRiskManager:
         self.take_params = config.get("take_params", {})
         self.position_method = config.get("position_method", "static")
         self.postion_params = config.get("position_params", {})
-        self.entry_price = None
+        self.entry_price = -1
         self.prediction = None
         
         self.setup_stop()
@@ -48,8 +48,8 @@ class SingleRiskManager:
 
     def set_balance(self, balance):
         self.balance = balance
-    def set_assigned_capital(self, assigned_capital):
-        self.assigned_capital = assigned_capital
+    def set_assigned_percentage(self, assigned_percentage):
+        self.assigned_percentage = assigned_percentage
     def set_manager(self, signal_processor, feature_extractor):
         self.signal_processor = signal_processor
         self.feature_extractor = feature_extractor

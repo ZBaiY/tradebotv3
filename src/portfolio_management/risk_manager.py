@@ -7,7 +7,7 @@ from src.data_handling.real_time_data_handler import RealTimeDataHandler, Loggin
 import src.portfolio_management.single_risk as srMan
 
 class RiskManager:
-    def __init__(self, config, data_handler, signal_processor=None, feature_handler=None):
+    def __init__(self, equity, balances, allocation_cryp, assigned_percentage,config, data_handler, signal_processor=None, feature_handler=None):
         """
         Parameters:
             stop_loss_threshold (float): Loss threshold to trigger stop-loss.
@@ -18,9 +18,10 @@ class RiskManager:
             "symbol2": {"method": "atr", "stop_loss": 0.05, "take_profit": 0.1, "atr_window": 14}
             }
         """
-        self.equity = None
-        self.balances = None
-        self.assigned_calpitals = {}
+        self.equity = equity # initially set to -1, to debug if it is set
+        self.balances = balances
+        self.assigned_percentage = assigned_percentage
+        self.allocation_cryp = allocation_cryp
         self.data_handler = data_handler
         self.symbols = self.data_handler.symbols
         self.signal_processor = signal_processor
@@ -30,7 +31,9 @@ class RiskManager:
         self.entry_price = {}
         self.config = config
         self.risk_managers = {}
-        self.initialize_risk_managers()
+
+    def calculate_position(self):
+        pass
 
     def set_equity(self, equity):
         self.equity = equity
@@ -38,27 +41,28 @@ class RiskManager:
     def set_balances(self, balances):
         self.balances = balances
 
-    def set_assigned_capitals(self, assigned_capitals):
-        self.assigned_calpitals = assigned_capitals
+    def set_assigned_percentage(self, assigned_percentage):
+        self.set_assigned_percentage = assigned_percentage
 
     def update_balances(self, balances):
         self.balances = balances
         for symbol in self.symbols:
             self.risk_managers[symbol].set_balance(self.balances[symbol])
+    
     def update_equity(self, equity):
         self.equity = equity
 
-    def update_assigned_capitals(self, assigned_capitals):
-        self.assigned_calpitals = assigned_capitals
+    def update_assigned_percentage(self, assigned_percentage):
+        self.assigned_percentage = assigned_percentage
         for symbol in self.symbols:
-            self.risk_managers[symbol].set_assigned_capital(self.assigned_calpitals[symbol])
+            self.risk_managers[symbol].set_assigned_percentage(self.assigned_percentage[symbol])
 
     
     def initialize_singles(self):
         for symbol in self.symbols:
-                self.risk_managers[symbol] = srMan.SingleRiskManager(symbol, self.config[symbol]["risk_manager"], self.data_handler, self.signal_processor, self.feature_handler)
+                self.risk_managers[symbol] = srMan.SingleRiskManager(symbol, self.config[symbol], self.data_handler, self.signal_processor, self.feature_handler)
                 self.risk_managers[symbol].set_balance(self.balances[symbol])
-                self.risk_managers[symbol].set_assigned_capital(self.assigned_calpitals[symbol])
+                self.risk_managers[symbol].set_assigned_percentage(self.assigned_percentage[symbol])
     
         
     

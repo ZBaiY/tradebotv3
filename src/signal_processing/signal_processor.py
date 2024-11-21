@@ -62,7 +62,9 @@ class SignalProcessor:
                     trans_instance.fit_scaler(symbol, self.processed_data[symbol])"""
         
         
-        
+    def initilize_processors(self, config):
+        print("initilize_processors")
+        pass
         
     
     def apply_filters(self):
@@ -198,7 +200,7 @@ class NonMemSignalProcessor:
         return self.apply_all()[symbol]
 
 
-"""if __name__ == "__main__":
+if __name__ == "__main__":
     data_handler = RealTimeDataHandler('config/source.json', 'config/fetch_real_time.json')
     mv_filter = MovingAverageFilter(lookback_size=5)
     es_filter = ExponentialSmoothingFilter(alpha=0.3)
@@ -225,5 +227,4 @@ class NonMemSignalProcessor:
         print(processors.processed_data['BTCUSDT'].tail())
         sleep_duration = (next_fetch_time - now).total_seconds()
         print(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
-        time.sleep(sleep_duration)"""
-
+        time.sleep(sleep_duration)
