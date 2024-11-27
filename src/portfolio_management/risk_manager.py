@@ -44,45 +44,40 @@ class RiskManager:
     def calculate_position(self):
         # Calculate position size based on balance, allocation_cryp and assigned percentage
         for symbol in self.symbols:
-            self.position[symbol] = self.balances[symbol] / (self.allocation_cryp[symbol] * self.assigned_percentage[symbol])
+            self.position[symbol] = self.balances[symbol] / (self.equity * self.assigned_percentage[symbol])
             self.risk_managers[symbol].set_position(self.position[symbol])
 
     def set_equity(self, equity):
         self.equity = equity
-
     def set_balances(self, balances):
         self.balances = balances
-
     def set_assigned_percentage(self, assigned_percentage):
-        self.set_assigned_percentage = assigned_percentage
-
+        self.assigned_percentage = assigned_percentage
     def update_balances(self, balances):
         self.balances = balances
         for symbol in self.symbols:
             self.risk_managers[symbol].set_balance(self.balances[symbol])
-    
     def update_equity(self, equity):
         self.equity = equity
-
+        for symbol in self.symbols:
+            self.risk_managers[symbol].set_equity(self.equity)
     def update_assigned_percentage(self, assigned_percentage):
         self.assigned_percentage = assigned_percentage
         for symbol in self.symbols:
             self.risk_managers[symbol].set_assigned_percentage(self.assigned_percentage[symbol])
-
-    
-    def initialize_singles(self):
-        for symbol in self.symbols:
-                self.risk_managers[symbol] = srMan.SingleRiskManager(symbol, self.config[symbol], self.data_handler, self.signal_processor, self.feature_handler)
-                self.risk_managers[symbol].set_balance(self.balances[symbol])
-                self.risk_managers[symbol].set_assigned_percentage(self.assigned_percentage[symbol])
-    
-        
-    
     def set_entry_price(self, entry_price):
         self.entry_price = entry_price
         for symbol in self.symbols:
             self.risk_managers[symbol].set_entry_price(entry_price[symbol])
     
+    
+    def initialize_singles(self):
+        for symbol in self.symbols:
+            self.risk_managers[symbol] = srMan.SingleRiskManager(symbol, self.equity, self.balances[symbol], self.assigned_percentage[symbol], self.config[symbol], self.data_handler, self.signal_processor, self.feature_handler)
+            self.risk_managers[symbol].set_entry_price(self.entry_price[symbol])
+        
+    
+   
     ### Calculate stop-loss take-profit and postion size
     def calculate_stp(self, symbol): # Redundant function, stp is calculated in the strategy module.py
         for symbol in self.symbols:

@@ -15,7 +15,7 @@ Strategy class by it self will not do the risk management calculations.
 
 
 class MultiAssetStrategy(BaseStrategy):
-    def __init__(self, equity, balances, allocation_cryp, assigned_percentage, datahandler, risk_manager, m_config = None, feature_module=None, signal_processors=None):
+    def __init__(self, equity, balances, allocation_cryp, assigned_percentage, datahandler, risk_manager, m_config = None, d_config = None, feature_module=None, signal_processors=None):
         """
         Strategy class for trading
         multiple assets simultaneously.
@@ -27,10 +27,12 @@ class MultiAssetStrategy(BaseStrategy):
         super().__init__(equity, balances, allocation_cryp, assigned_percentage, datahandler, risk_manager, feature_module, signal_processors)
         self.signals = {}
         self.m_config = m_config
+        self.d_config = d_config
+        self.strategies = {}
         
     def initialize_singles(self):
         for symbol in self.symbols:
-            self.strategies[symbol] = SingleAssetStrategy(symbol, self.m_config[symbol], self.risk_manager.risk_managers[symbol], self.data_handler, self.signal_processors, self.features)
+            self.strategies[symbol] = SingleAssetStrategy(symbol, self.m_config[symbol], self.d_config[symbol], self.risk_manager.risk_managers[symbol], self.data_handler, self.signal_processors, self.features)
             self.strategies[symbol].initialize(self.risk_manager.risk_managers[symbol])
 
     def pre_run(self):
@@ -38,22 +40,27 @@ class MultiAssetStrategy(BaseStrategy):
         if rebanlance_need:
             self.rebalance_portfolio()
 
-    def run_orchestra(self, data):
+    def run_strategy_market(self):
         """
         Run prediction on the given data.
         """
         for symbol in self.symbols:
-
-            self.strategies[symbol].run_prediction(data[symbol])
-            self.signals[symbol] = self.strategies[symbol].signal_decision()
-
-        """
-        Reminder: There is request_data, etc. in the SingleAssetStrategy class, For 
-        """
-
+            data = self.data_handler.cleaned_data
+            self.strategies[symbol].run_prediction(data[symbol]['close'])
+            self.signals[symbol] = self.strategies[symbol].make_decision_market()
+        return self.signals
+    
     def get_signals(self):
         return self.signals
-
+    
+    def update_equity(self, equity):
+        self.equity = equity
+        for symbol in self.symbols:
+            self.strategies[symbol].set_equity(equity)
+    def update_balances(self, balances):
+        self.balances = balances
+        for symbol in self.symbols:
+            self.strategies[symbol].set_balance(balances[symbol])
 
 
 
@@ -61,6 +68,7 @@ class MultiAssetStrategy(BaseStrategy):
 ########### Maybe can be used to dobule check the signals are within the assigned percentage
 ########### Maybe do the rebalance here
 ########### They are abit redundant here, check later
+
     def update_equity(self, equity):
         self.equity = equity
         for symbol in self.symbols:
@@ -81,7 +89,7 @@ class MultiAssetStrategy(BaseStrategy):
         """
         Check if rebalancing is needed.
         """
-        pass
+        return False
 
 
         

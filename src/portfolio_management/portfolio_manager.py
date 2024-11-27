@@ -4,16 +4,18 @@
 # portfolio_manager.py
 
 class PortfolioManager:
-    def __init__(self, allocated_capital, target_allocation):
+    def __init__(self, equity, balances, allocation_cryp, symbols, path='config/portfolio.json'):
         """
         Parameters:
             allocated_capital (float): The total capital allocated to crypto investments.
             target_allocation (dict): A dictionary mapping each crypto symbol to a target allocation percentage.
         """
-        self.allocated_capital = allocated_capital
-        self.target_allocation = target_allocation
-        self.equity = None
-        self.balances = None
+        self.equity = equity
+        self.balances = balances
+        self.symbols = symbols  
+        self.allocation_cryp = allocation_cryp
+        self.assigned_percentage = {}
+
 
     def set_equity(self, equity):
         self.equity = equity
@@ -21,30 +23,15 @@ class PortfolioManager:
     def set_balances(self, balances):
         self.balances = balances
 
-    def calculate_individual_allocations(self):
-        """
-        Divides the allocated capital based on the target allocation for each crypto.
-        """
-        allocations = {}
-        for symbol, percentage in self.target_allocation.items():
-            allocations[symbol] = self.allocated_capital * percentage
-        return allocations
-    
-    def needs_rebalance(self, current_holdings):
-        """
-        Determines if the portfolio needs rebalancing based on threshold.
-        
-        Parameters:
-            current_holdings (dict): Current holdings by crypto symbol.
 
-        Returns:
-            bool: True if rebalancing is needed, otherwise False.
+    def equal_weight(self):
         """
-        rebalance_orders = self.portfolio_manager.rebalance(current_holdings)
-        for symbol, adjustment in rebalance_orders.items():
-            if abs(adjustment / self.portfolio_manager.allocated_capital) > self.threshold:
-                return True
-        return False
+        Calculates the target allocation for each crypto symbol based on equal weight.
+        """
+        num_symbols = len(self.symbols)
+        self.assigned_percentage = {symbol: 1 / num_symbols for symbol in self.symbols}
+        
+
 
     def rebalance(self, current_holdings):
         """
@@ -56,10 +43,13 @@ class PortfolioManager:
         Returns:
             rebalance_orders (dict): Orders needed to achieve target allocation.
         """
-        target_allocations = self.calculate_individual_allocations()
+        target_allocations = self.equal_weight()
         rebalance_orders = {}
         for symbol, target_amount in target_allocations.items():
             current_amount = current_holdings.get(symbol, 0)
             rebalance_orders[symbol] = target_amount - current_amount
         return rebalance_orders
 
+    def get_assigned_percentage(self):
+        self.equal_weight()
+        return self.assigned_percentage

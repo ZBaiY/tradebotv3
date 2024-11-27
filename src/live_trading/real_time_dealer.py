@@ -17,7 +17,6 @@ from src.portfolio_management.capital_allocator import CapitalAllocator
 from src.portfolio_management.portfolio_manager import PortfolioManager
 from src.feature_engineering.feature_extractor import FeatureExtractor
 from src.signal_processing.signal_processor import SignalProcessor
-import src.strategy as Strategy
 import src.strategy.multi_asset_strategy as MultiAssetStrategy
 # from src.live_trading.execution_handler import ExecutionHandler
 from src.live_trading.order_manager import OrderManager
@@ -81,6 +80,8 @@ class RealtimeDealer:
         self.PortfolioManager = None
         self.RiskManager = None
         self.Strategy = None
+        
+        self.freezing_time = 0
 
         # Preparing to run the system
         self.is_running = False 
@@ -112,10 +113,13 @@ class RealtimeDealer:
 
         return total_equity
     
-    def set_entry_price(self):
+    def set_entry_prices(self):
+        entry_prices = {}
         for symbol in self.symbols:
-            self.entry_prices[symbol] = self.entry_price(symbol)
-    
+            entry_prices[symbol] = self.entry_price(symbol)
+        self.entry_prices = entry_prices
+        self.RiskManager.set_entry_price(self.entry_prices)
+
     def entry_price(self, symbol):
         """
         Calculate the weighted average entry price for a current open position of a specific symbol.
@@ -162,16 +166,11 @@ class RealtimeDealer:
     
     def update_assigned_percentage(self, assigned_percentage):
         self.assigned_percentage = assigned_percentage
-        self.RiskManager.update_assigned_capitals(assigned_percentage)
-        self.Strategy.update_assigned_percentage(assigned_percentage)
+        self.RiskManager.set_assigned_percentage(assigned_percentage)
+        self.Strategy.set_assigned_percentage(assigned_percentage)
 
     
-    def set_entry_price(self):
-        entry_prices = {}
-        for symbol in self.symbols:
-            entry_prices[symbol] = self.entry_price(symbol)
-        self.entry_prices = entry_prices
-        self.RiskManager.set_entry_price(self.entry_prices)
+
 
     def equity_balance_tools(self):
         self.RiskManager.set_equity(self.equity)
@@ -180,8 +179,8 @@ class RealtimeDealer:
         self.Strategy.set_balances(self.balances_symbol_fr)  # Maybe redundant
         self.PortfolioManager.set_equity(self.equity)
         self.PortfolioManager.set_balances(self.balances_symbol_fr)
-        self.CapitalAllocator.set_equity(self.equity)
-        self.CapitalAllocator.set_balances(self.balances_symbol_fr)
+#        self.CapitalAllocator.set_equity(self.equity)
+#        self.CapitalAllocator.set_balances(self.balances_symbol_fr)
 
     
     def update_equity_balances(self):
@@ -204,16 +203,15 @@ class RealtimeDealer:
         """
         self.equity_balance()
         self.initialize_CapitalAllocator(self.equity, self.balances_symbol_fr)
-        self.allocation_cryp = self.CapitalAllocator.get_allcation_cryp() 
-        self.initialize_PortfolioManager(self.equity, self.balances_symbol_fr, self.allocation_cryp) 
+        self.allocation_cryp = self.CapitalAllocator.get_allocation_cryp() 
+        self.initialize_PortfolioManager(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.symbols) 
         self.assigned_percentage = self.PortfolioManager.get_assigned_percentage()
         self.initialize_Straegy(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.assigned_percentage)          # Model, RiskManager is initialized here
-        self.set_assigned_percentage(self.assigned_percentage)
-        self.set_entry_price()
+        self.set_assigned_percentage(self.assigned_percentage) # percentage here is smaller than the 1.0
+        self.set_entry_prices()
         
     def initialize_CapitalAllocator(self):
-        # Read from json file
-        pass
+        self.CapitalAllocator = CapitalAllocator()
     def initialize_PortfolioManager(self):
         # Read from json file
         pass
@@ -223,21 +221,21 @@ class RealtimeDealer:
         s_config = json.load(open('config/strategy.json', 'r'))
         m_config = {}
         r_config = {}
+        d_config = {}
         for symbol in self.symbols:
             m_config[symbol] = s_config[symbol]['model']
             r_config[symbol] = s_config[symbol]['risk_manager']
+            d_config[symbol] = s_config[symbol]['decision_maker']
 
         #### will set the equity, balances, assigned_capitals, initialize the singles
         self.RiskManager = RiskManager(equity, balances, allocation_cryp, assigned_percentage, s_config, self.data_handler, self.signal_processors, self.features)
         self.RiskManager.initialize_singles()
         self.RiskManager.calculate_position()
         #### will set the equity, balances, assigned_capitals, initialize the models
-        self.Strategy = MultiAssetStrategy(equity, balances, allocation_cryp, assigned_percentage, self.data_handler, self.RiskManager, m_config, self.features, self.signal_processors)
+        self.Strategy = MultiAssetStrategy(equity, balances, allocation_cryp, assigned_percentage, self.data_handler, self.RiskManager, m_config, d_config, self.features, self.signal_processors)
         self.Strategy.initialize_singles()
 
 ########################### Block 2: Initialization for the tools ########################################
-
-
 
 
     def get_asset_price(self, asset, quote):
@@ -254,13 +252,13 @@ class RealtimeDealer:
         self.is_running = True
         next_fetch_time, last_fetch_time = self.data_handler.pre_run_data()
         self.logger.info("Starting RealtimeDealer.")
-        self.initialize()
+        self.run_initialization()
 
         while self.is_running:
             self.data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
             self.data_handler.notify_subscribers()
             # Includes running the data processing (for the processor who need it), feature extraction
-            limit_signals, market_orders = self.strategy.run_strategy(self.data_handler)
+            market_orders = self.Strategy.run_strategy_market()
             # Includes running the model prediction, generating signals, 
             # and applying stop loss/take profit to determine amount to buy/sell
             """
@@ -316,10 +314,17 @@ class RealtimeDealer:
                     )
             # Check for any stop-loss or take-profit conditions and execute orders
             # After executing the orders, update the equity and balances
-            self.equity = ...
-            self.balances_symbol_fr = ...
+            self.equity_balance()
             self.update_equity_balances()
-            self.set_entry_price()
+            self.set_entry_prices()
+            
+            ######
+            # Missing functions: check the market orders completion
+            # check the market opening
+            # check new months --- organizing the data, and rebalancing
+            # check the system health
+            # check new weeks --- for updating the scalers
+            ######
 
             """
             check months, if new month

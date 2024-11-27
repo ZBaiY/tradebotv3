@@ -7,7 +7,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 class SingleRiskManager:
-    def __init__(self, symbol, config, datahandler, signal_processor, feature_extractor):
+    def __init__(self, symbol, equity, balance, assigned_percentage, config, datahandler, signal_processor, feature_extractor):
         """
         Parameters:
             symbol (str): Crypto symbol.
@@ -19,14 +19,16 @@ class SingleRiskManager:
             }
         """
 
-        self.balance = -1 # initially set to -1, to debug if it is set
-        self.assigned_percentage = -1
+        self.balance = balance # initially set to -1, to debug if it is set
+        self.assigned_percentage = assigned_percentage
         self.entry_price = -1
-        self.position = -1
+        self.position = balance / (equity * assigned_percentage)
+        self.equity = equity
         self.symbol = symbol
         self.datahandler = datahandler
         self.signal_processor = signal_processor
         self.feature_extractor = feature_extractor
+        
         
         self.stop_method = config.get("stop_method", "static")
         self.stop_params = config.get("stop_params", {})
@@ -51,14 +53,18 @@ class SingleRiskManager:
 
     def set_position(self, position):
         self.position = position
-
     def set_balance(self, balance):
         self.balance = balance
     def set_assigned_percentage(self, assigned_percentage):
         self.assigned_percentage = assigned_percentage
-    def set_manager(self, signal_processor, feature_extractor):
-        self.signal_processor = signal_processor
-        self.feature_extractor = feature_extractor
+    def set_equity(self, equity):
+        self.equity = equity
+
+    def calculate_capital(self, buy=False, sell=False):
+        if buy:
+            return self.equity * self.assigned_percentage * (1- self.position)
+        if sell:
+            return self.equity * self.assigned_percentage * self.position
 
     def read_json_file(file_path):
         """
@@ -136,10 +142,16 @@ class SingleRiskManager:
 
     def request_data(self):
         # The requested data will be written in files under the folder src/model_details/...
+        # This will update all the dynamical data that cannot be chosen manually
+        self.input_stop = self.stop_params
+        self.input_take = self.take_params
+        self.input_position = self.postion_params
+
         if "current_price" in self.required_stop_fields:
             self.input_stop['current_price'] = self.datahandler.get_last_price(self.symbol)['close']
         if "atr" in self.required_stop_fields:
             self.input_stop['atr'] = self.features.get_last_indicator(self.symbol, 'atr')
+        
         if "max_price" in self.required_stop_fields:
             look_back_prices = self.datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
             self.input_stop['max_price'] = max(look_back_prices)
@@ -159,6 +171,8 @@ class SingleRiskManager:
             self.input_take['prediction'] = self.prediction
 
 
+        if "capital" in self.required_position_fields:
+            self.input_position['capital'] = self.equity * self.assigned_percentage * (1-self.position)
         if "current_price" in self.required_position_fields:
             self.input_position['current_price'] = self.datahandler.get_last_price(self.symbol)['close']
         if "prediction" in self.required_position_fields:
@@ -169,27 +183,27 @@ class SingleRiskManager:
         
     def calculate_stop_loss(self):
         if self.stop_method == "atr":
-            self.stop_loss = StopLoss.atr_stop_loss(self.atr_multiplier, **self.input_stop)
+            self.stop_loss = StopLoss.atr_stop_loss(**self.input_stop)
         elif self.stop_method == "trailing":
-            self.stop_loss = StopLoss.trailing_stop_loss(self.trail_percent, **self.input_stop)
+            self.stop_loss = StopLoss.trailing_stop_loss(**self.input_stop)
         elif self.stop_method == "static":
-            self.stop_loss = StopLoss.static_stop_loss(self.stop_loss_percent, **self.input_stop)
+            self.stop_loss = StopLoss.static_stop_loss(**self.input_stop)
         #elif self.stop_method == "risk_reward":
         #    self.stop_loss = StopLoss.risk_reward_take_profit(self.risk_reward_ratio, **self.input_stop)
         elif self.stop_method == "custom_1":
             ###### This needs to be updated (trend_dir) ######
-            self.stop_loss = StopLoss.custom_1(self.atr_multiplier, self.trail_percent, self.stop_loss_percent, **self.input_stop)
+            self.stop_loss = StopLoss.custom_1(**self.input_stop)
         else:
             raise ValueError("Invalid method for stop loss.")
     
     def calculate_take_profit(self):
         self.input_take['stop_loss_price'] = self.stop_loss
         if self.take_method == "static":
-            self.take_profit = TakeProfit.static_take_profit(self.take_profit_percent, **self.input_take)
+            self.take_profit = TakeProfit.static_take_profit(**self.input_take)
         elif self.take_method == "trailing":
-            self.take_profit = TakeProfit.trailing_take_profit(self.trail_percent, **self.input_take)
+            self.take_profit = TakeProfit.trailing_take_profit(**self.input_take)
         elif self.take_method == "risk_reward":
-            self.take_profit = TakeProfit.risk_reward_take_profit(self.risk_reward_ratio, **self.input_take)
+            self.take_profit = TakeProfit.risk_reward_take_profit(**self.input_take)
         else:
             raise ValueError("Invalid method for take profit.")
         
@@ -201,9 +215,9 @@ class SingleRiskManager:
         if self.position_method == "kelly":
             self.position_size = PositionSizing.kelly_criterion(self.win_rate, self.avg_win, self.avg_loss)
         elif self.position_method == "risk_based":
-            self.position_size = PositionSizing.risk_based_position_size(self.risk_per_trade, **self.input_position)
+            self.position_size = PositionSizing.risk_based_position_size(**self.input_position)
         elif self.position_method == "fixed_fractional":
-            self.position_size = PositionSizing.fixed_fractional_position_size(self.risk_percentage, **self.input_position)
+            self.position_size = PositionSizing.fixed_fractional_position_size(**self.input_position)
         else:
             raise ValueError("Invalid method for position sizing.")
     
@@ -238,7 +252,7 @@ class SingleRiskManager:
 class StopLoss:
 
     @staticmethod
-    def atr_stop_loss(atr_multiplier=1, **kwargs):
+    def atr_stop_loss(**kwargs):
         """
         Calculate the stop loss based on the average true range (ATR).
 
@@ -247,6 +261,7 @@ class StopLoss:
         :param atr_multiplier: The ATR multiplier for the stop loss.
         :return: The stop loss price.
         """
+        atr_multiplier = kwargs.get("atr_multiplier", 1)
         current_price = kwargs.get("current_price", None)
         atr = kwargs.get("atr", None)
         if current_price is None or atr is None:
@@ -255,7 +270,7 @@ class StopLoss:
         return stop_loss
     
     @staticmethod
-    def trailing_stop_loss(trail_percent=0.15, **kwargs):
+    def trailing_stop_loss(**kwargs):
         """
         Calculates the trailing stop-loss price.
         
@@ -267,6 +282,7 @@ class StopLoss:
         Returns:
         - float: The trailing stop-loss price.
         """
+        trail_percent = kwargs.get("trail_percent", 0.05)
         max_price = kwargs.get("max_price", None)
         if max_price is None:
             return -1
@@ -290,7 +306,7 @@ class StopLoss:
         return max(stop_loss_price,0)
 
     @staticmethod
-    def custom_1(trend_dir, atr_multiplier=1, trail_percent = 0.2, stop_loss_percent=0.02, **kwargs):
+    def custom_1(trend_dir, **kwargs):
         """
         Calculate the stop loss based on the trend direction.
         atr_stop_loss for uptrend, trailing_stop_loss for downtrend, static_stop_loss for sideway trend.
@@ -304,6 +320,9 @@ class StopLoss:
         :param stop_loss_percent: The static stop loss percentage.
         :return: The stop loss price.
         """
+        atr_multiplier = kwargs.get("atr_multiplier", 1)
+        trail_percent = kwargs.get("trail_percent", 0.2)
+        stop_loss_percent = kwargs.get("stop_loss_percent", 0.02)
         current_price = kwargs.get("current_price", None)
         atr = kwargs.get("atr", None)
         max_price = kwargs.get("max_price", None)
@@ -323,7 +342,7 @@ class TakeProfit:
 
 
     @staticmethod
-    def risk_reward_take_profit(risk_reward_ratio=2, **kwargs):
+    def risk_reward_take_profit(**kwargs):
         """
         Calculate take-profit price based on risk-reward ratio.
 
@@ -332,6 +351,7 @@ class TakeProfit:
         :param risk_reward_ratio: Desired risk-reward ratio (e.g., 2 for a 2:1 ratio).
         :return: Take-profit price.
         """
+        risk_reward_ratio = kwargs.get("risk_reward_ratio", 2)
         entry_price = kwargs.get("entry_price", None)
         stop_loss_price = kwargs.get("stop_loss_price", None)
         if entry_price is None or stop_loss_price is None:
@@ -342,7 +362,7 @@ class TakeProfit:
         return take_profit_price
 
     @staticmethod
-    def trailing_take_profit(trail_percent=0.05, **kwargs):
+    def trailing_take_profit(**kwargs):
         """
         Calculate trailing take-profit price based on percentage.
 
@@ -352,6 +372,7 @@ class TakeProfit:
         :return: Trailing take-profit price.
         """
         # Validate inputs
+        trail_percent = kwargs.get("trail_percent", 0.2)
         entry_price = kwargs.get("entry_price", None)
         max_price = kwargs.get("max_price", None)
 
@@ -365,7 +386,7 @@ class TakeProfit:
         return trailing_take_profit_price
 
     @staticmethod
-    def static_take_profit(take_profit_percent, **kwargs):
+    def static_take_profit(**kwargs):
         """
         Calculate the take-profit price based on a fixed percentage above the entry price.
 
@@ -373,11 +394,15 @@ class TakeProfit:
         :param take_profit_percent: Percentage above the entry price for taking profit.
         :return: Take-profit price.
         """
+        take_profit_percent = kwargs.get("take_profit_percent", 2)
         entry_price = kwargs.get("entry_price", None)
         take_profit_price = entry_price * (1 + take_profit_percent)
         return take_profit_price
 
+
+
 class PositionSizing:
+    ##### Get the position size, return the fraction of capital to risk #####
     @staticmethod
     def kelly_criterion(win_rate, avg_win, avg_loss):
         """
@@ -392,42 +417,25 @@ class PositionSizing:
         return max(0, kelly_fraction)  # Ensure non-negative value
     
     @staticmethod
-    def risk_based_position_size(capital, risk_per_trade, current_price, stop_loss_price):
-        """
-        Calculate the position size based on risk per trade and stop loss distance.
+    def risk_based_position_size(**kwargs):
+        
+        current_price = kwargs.get("current_price", None)
+        stop_loss_price = kwargs.get("stop_loss_price", None)
+        risk_per_trade = kwargs.get("risk_per_trade", 1.0)
 
-        :param capital: Total trading capital in dollars.
-        :param risk_per_trade: Fraction of capital to risk on a single trade (e.g., 0.01 for 1%).
-        :param entry_price: Entry price of the trade in dollars.
-        :param stop_loss_price: Stop loss price of the trade in dollars.
-        :return: Position size (number of shares to trade).
-        """
-        stop_loss_distance = abs(current_price - stop_loss_price)/current_price
+        if current_price is None or stop_loss_price is None:
+            raise ValueError("current_price and stop_loss_price must be provided")
+
+        stop_loss_distance = abs(current_price - stop_loss_price) / current_price
         if stop_loss_distance <= 1e-6:
-            return -1
-        risk_amount = capital * risk_per_trade
-        position_size = risk_amount / stop_loss_distance
-        if position_size > capital: # Ensure position size doesn't exceed capital
-            return capital / current_price
-        num_shares = position_size / current_price
-        return num_shares
+            stop_loss_distance = 1e-6
+
+        position_size_fraction = risk_per_trade / stop_loss_distance
+        return min(position_size_fraction,1.0)
     
     @staticmethod
-    def fixed_fractional_position_size(capital, risk_percentage, current_price, stop_loss_price):
-        """
-        Calculate the position size using fixed fractional position sizing.
+    def fixed_fractional_position_size(**kwargs):
+        fraction = kwargs.get("fixed_fraction", 0.2)
+        return fraction
 
-        :param capital: Total trading capital in dollars.
-        :param risk_percentage: Percentage of capital to risk on a single trade.
-        :param entry_price: Entry price of the trade in dollars.
-        :param stop_loss_price: Stop loss price of the trade in dollars.
-        :return: Position size (number of shares to trade).
-        """
-        risk_amount = capital * (risk_percentage / 100)
-        risk_per_share = abs(current_price - stop_loss_price)
-        position_size = risk_amount / risk_per_share
-        if position_size > capital: # Ensure position size doesn't exceed capital
-            return capital / current_price    
-        num_shares = position_size / current_price
-        return num_shares
-
+    

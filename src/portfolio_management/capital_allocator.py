@@ -1,6 +1,8 @@
 """Should be directly called by the real-time trading module to allocate capital to crypto."""
 """Not a part of the strategy module."""
-
+#####
+# Deactivate for my personal use
+#####
 # capital_allocator.py
 import sys
 import os
@@ -46,6 +48,9 @@ class CapitalAllocator:
         allocated_capital = total_savings * self.capital_allocation_percentage
         return allocated_capital
 
+    def constant_allocation(self, amount):
+        self.capital_allocation_percentage = amount
+
     def update_allocation_percentage(self, new_percentage):
         """
         Updates the percentage of savings allocated to crypto.
@@ -58,3 +63,5 @@ class CapitalAllocator:
         with open('config.json', 'w') as file:
             json.dump(self.config, file)
 
+    def get_allocation_cryp(self):
+        return self.constant_allocation(1) 
