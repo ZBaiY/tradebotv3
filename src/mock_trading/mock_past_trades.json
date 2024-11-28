@@ -1,0 +1,53 @@
+[
+    {
+        "symbol": "BTCUSDT",
+        "id": 12345678,
+        "orderId": 87654321,
+        "side": "BUY",
+        "price": "30000.00",
+        "qty": "0.001",
+        "realizedPnl": "0.00",
+        "marginAsset": "USDT",
+        "quoteQty": "30.00",
+        "commission": "0.03",
+        "commissionAsset": "USDT",
+        "time": 1633046400000,
+        "positionSide": "BOTH",
+        "buyer": true,
+        "maker": false
+    },
+    {
+        "symbol": "BTCUSDT",
+        "id": 12345679,
+        "orderId": 87654322,
+        "side": "SELL",
+        "price": "31000.00",
+        "qty": "0.001",
+        "realizedPnl": "10.00",
+        "marginAsset": "USDT",
+        "quoteQty": "31.00",
+        "commission": "0.031",
+        "commissionAsset": "USDT",
+        "time": 1633046500000,
+        "positionSide": "BOTH",
+        "buyer": false,
+        "maker": true
+    },
+    {
+        "symbol": "ETHUSDT",
+        "id": 12345680,
+        "orderId": 87654323,
+        "side": "BUY",
+        "price": "2000.00",
+        "qty": "0.05",
+        "realizedPnl": "0.00",
+        "marginAsset": "USDT",
+        "quoteQty": "100.00",
+        "commission": "0.1",
+        "commissionAsset": "USDT",
+        "time": 1633046600000,
+        "positionSide": "BOTH",
+        "buyer": true,
+        "maker": false
+    }
+]

@@ -19,31 +19,14 @@ from src.feature_engineering.feature_extractor import FeatureExtractor
 from src.signal_processing.signal_processor import SignalProcessor
 import src.strategy.multi_asset_strategy as MultiAssetStrategy
 # from src.live_trading.execution_handler import ExecutionHandler
-from src.live_trading.order_manager import OrderManager
-
-"""
-We wrote something for limit orders 
-but in the beginning of the project,
-We don't have any limit orders. We will use market orders for now.
-So the limit order logic is imcomplete.
-Like dealing with the order status, canceling the old order, etc.
-"""
+from mock_trading.mock_order_manager import MockOrderManager
 
 
-"""
-To initialize the risk_manager and strategy, we need to read the config files.
-"""
-
-class RealtimeDealer:
-    def __init__(self, datahandler=None, feature_module=None, signal_processors=None, api_path = 'config/api_config.json', log_dir='/trade/logs', log_file='real_time_dealer.log'):
-        
-        # Initialize the data baths
-        self.data_handler = datahandler
-        if datahandler is None:
-            self.data_handler = RealTimeDataHandler('config/source.json', 'config/fetch_real_time.json')  
-        self.features = feature_module
-        if feature_module is None:
-            self.features = FeatureExtractor(self.data_handler)
+class MockRealtimeDealer:
+    def __init__(self, datahandler=None, feature_module=None, signal_processors=None, log_dir='/mock/logs', log_file='mock_real_time_dealer.log'):
+        # Initialize mock data handlers
+        self.data_handler = datahandler or RealTimeDataHandler('config/source.json', 'config/fetch_real_time.json')  
+        self.features = feature_module or FeatureExtractor(self.data_handler)
         self.signal_processors = signal_processors
         if signal_processors is None:
             processors_config = json.load(open('config/processors.json', 'r'))
@@ -53,19 +36,12 @@ class RealtimeDealer:
                 self.signal_processors[processor_name] = SignalProcessor(self.data_handler, column=column)
                 self.signal_processors[processor_name].initialize_processors(config)
         
-        # Initialize the Binance API client and OrderManager
-
-        self.api = json.load(open(api_path, 'r'))
-        api_key = self.api.get('api_key', None)
-        api_secret = self.api.get('api_secret', None)
-        self.client = Client(api_key, api_secret)
-        self.OrderManager = OrderManager(self.client)
-
-        # Initialize logging handler for the dealer
+        # Initialize logging
         self.logger = LoggingHandler(log_dir=log_dir, log_file=log_file).logger
         self.logger.info("RealtimeDealer initialized.")
-
-        # Initialize the variables
+        # Mock objects and variables
+        self.OrderManager = MockOrderManager()
+        self.equity = None  
         self.symbols = self.data_handler.symbols
         self.equity = None # total equity in USDT
         self.balances_symbol = None # total balance in each symbol
@@ -75,16 +51,18 @@ class RealtimeDealer:
         self.assigned_percentage = None
         self.entry_prices = {}
 
-        # Initialize the tools
+
+        # Initialize portfolio and strategy
         self.CapitalAllocator = None
         self.PortfolioManager = None
         self.RiskManager = None
         self.Strategy = None
-        
+
         self.freezing_times = 0 ### used for checking the whether the trade is frozen or not
 
         # Preparing to run the system
         self.is_running = False 
+
 
 ########################### Block 1: equity, balances, entry prices, asigned capitals ########################################
     def equity_balance(self):
@@ -131,10 +109,10 @@ class RealtimeDealer:
         total_cost = 0.0
         remaining_qty = 0.0
 
-        for order_id, order in past_trades.items():
+        for order in past_trades:
             # Only consider trades for the given symbol that are fully filled
-            if order['symbol'] == symbol and order['status'] == "FILLED":
-                trade_qty = float(order['executedQty'])
+            if order['symbol'] == symbol:
+                trade_qty = float(order['qty'])
                 trade_price = float(order['price'])
                 trade_side = order['side']  # 'BUY' or 'SELL'
 
@@ -149,9 +127,10 @@ class RealtimeDealer:
                         remaining_qty = 0
                         total_cost = 0
                         total_bought_qty = 0
-
+                
                 if total_cost>=self.balances_symbol_fr[symbol]:
                     break
+            
 
         # Calculate weighted average entry price based on remaining open position
         if remaining_qty > 0:
@@ -195,6 +174,7 @@ class RealtimeDealer:
 ########################### Block 1: equity, balances, entry prices, asigned capitals ########################################
 
 ########################### Block 2: Initialization for the tools ########################################
+
     def run_initialization(self):
         """
         Fist read the current equity and balance, and portfolio manager from logs
@@ -212,13 +192,14 @@ class RealtimeDealer:
         self.initialize_Straegy(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.assigned_percentage)          # Model, RiskManager is initialized here
         self.set_assigned_percentage(self.assigned_percentage) # percentage here is smaller than the 1.0
         self.set_entry_prices()
-        
+    
     def initialize_CapitalAllocator(self):
         self.CapitalAllocator = CapitalAllocator()
     def initialize_PortfolioManager(self, equity, balances_symbol_fr, allocation_cryp, symbols):
         self.PortfolioManager = PortfolioManager(equity, balances_symbol_fr, allocation_cryp, symbols)
-        
 
+    
+    
     def initialize_Straegy(self, equity, balances, allocation_cryp, assigned_percentage):
         # Read from json file
         s_config = json.load(open('config/strategy.json', 'r'))
@@ -240,7 +221,6 @@ class RealtimeDealer:
 
 ########################### Block 2: Initialization for the tools ########################################
 
-
     def get_asset_price(self, asset, quote):
         try:
             response = requests.get(f'https://api.binance.com/api/v3/ticker/price?symbol={asset}{quote}')
@@ -249,6 +229,24 @@ class RealtimeDealer:
         except Exception as e:
             self.logger.error(f"Error retrieving price for {asset}{quote}: {e}")
             return 0.0
+        
+    def simulate_equity_balance(self):
+        """
+        Simulates equity and balance updates.
+        """
+        self.equity = 100000  # Simulated fixed equity
+        self.balances_symbol_fr = {symbol: self.equity / len(self.symbols) for symbol in self.symbols}
+        self.logger.info(f"Simulated equity balance: {self.equity}, Balances: {self.balances_symbol_fr}")
+
+    def simulate_entry_prices(self):
+        """
+        Simulates the setting of entry prices.
+        """
+        for symbol in self.symbols:
+            self.entry_prices[symbol] = self.data_handler.get_mock_price(symbol)
+        self.RiskManager.set_entry_price(self.entry_prices)
+        self.logger.info(f"Simulated entry prices: {self.entry_prices}")
+
 
     def start(self):
 
@@ -349,44 +347,17 @@ class RealtimeDealer:
             time.sleep(sleep_duration)
 
 
-
     def calculate_next_grid(self, current_time):
         next_time = current_time + timedelta(minutes=1)
-        self.logger.info(f"Next fetch time calculated: {next_time}")
         return next_time
-
-    def monitor_system_health(self):
-        if not self.data_handler.is_healthy():
-            self.logger.warning("Data Handler issue detected. Restarting system.")
-            self.restart_system()
-        else:
-            self.logger.info("System health check passed.")
-
-    def restart_system(self):
-        self.logger.info("Restarting system due to detected issue.")
-        self.stop()
-        self.start()
 
     def stop(self):
         self.is_running = False
-        self.logger.info("Stopping RealtimeDealer.")
+        self.logger.info("Stopping MockRealtimeDealer.")
 
-    def get_entry_price(self, symbol):
-        return self.entry_prices[symbol]
-    
-
-    def check_rebalance(self):
-        """
-        Check if the portfolio needs rebalancing based on the current asset allocation.
-        """
-        pass
-
-    def rebalance_portfolio(self):
-        """
-        This function will be called periodically to rebalance the portfolio based on the current asset allocation.
-        Rebalance the portfolio based on the current asset allocation.
-        """
-        """Holder for the rebalance logic."""
-        new_allocations = ...
-        self.Strategy.set_assigned_percentage(new_allocations)
-        self.RiskManager.set_assigned_percentage(new_allocations)
+if __name__ == "__main__":
+    dealer = MockRealtimeDealer()
+    try:
+        dealer.start()
+    except KeyboardInterrupt:
+        dealer.stop()
