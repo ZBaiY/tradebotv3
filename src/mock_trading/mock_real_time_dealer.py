@@ -319,6 +319,7 @@ class MockRealtimeDealer:
             self.update_equity_balances()
             self.set_entry_prices()
             
+            
             ######
             # Missing functions: check the market orders completion
             # check the market opening
