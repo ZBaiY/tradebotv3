@@ -8,6 +8,7 @@ import os
 # Add the src directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from src.data_handling.real_time_data_handler import RealTimeDataHandler
+from src.data_handling.historical_data_handler import HistoricalDataHandler, SingleSymbolDataHandler
 from src.feature_engineering.feature_selector import TopSelector, CorrelationSelector, HybridSelector, VolatilityBasedSelector
 from datetime import datetime, timezone
 import time
@@ -657,6 +658,162 @@ class FeatureExtractor:
         :return: A DataFrame containing all the indicators.
         """
         return self.indicators[symbol][indicator]
+
+
+class SingleSymbolFeatureExtractor:
+    """
+    A feature extractor for a single symbol that incrementally updates technical indicators for real-time trading.
+    Reads indicator settings from a JSON file.
+    """
+    
+    def __init__(self, symbol, data_handler: SingleSymbolDataHandler=None):
+        self.symbol = symbol
+        self.data_handler = data_handler
+        # self.interval = self.data_handler.interval_str
+        self.settings = self._load_settings()
+        self._initialize_indicators()
+        self.indicators = pd.DataFrame()
+        # self.helpers = pd.DataFrame()
+        self.selections = []
+
+    def _load_settings(self) -> dict:
+        """
+        Load indicator settings from a JSON file.
+        :return: A dictionary containing settings for the indicators.
+        """
+        file_name = f'config/feature_set_{self.interval}.json'
+        try:
+            with open(file_name, 'r') as file:
+                settings = json.load(file)
+            return settings
+        except FileNotFoundError:
+            raise Exception(f"Settings file {file_name} not found.")
+        except json.JSONDecodeError:
+            raise Exception(f"Error decoding JSON file {file_name}.")
+
+    def _initialize_indicators(self):
+        """
+        Initialize state for all indicators based on settings from the JSON file.
+        """
+        self.rsi_period = self.settings.get("rsi_period", None)
+        self.macd_short = self.settings.get("macd_short", None)
+        self.macd_long = self.settings.get("macd_long", 26)
+        self.macd_signal = self.settings.get("macd_signal", 9)
+        self.stoch_period = self.settings.get("stoch_period", None)
+        self.stoch_smooth_k = self.settings.get("stoch_smooth_k", 3)
+        self.stoch_smooth_d = self.settings.get("stoch_smooth_d", 3)
+        self.bollinger_period = self.settings.get("bollinger_period", None)
+        self.bollinger_std = self.settings.get("bollinger_std", 2)
+        self.atr_period = self.settings.get("atr_period", None)
+        self.vwap_period = self.settings.get("vwap_period", None)
+        self.obv_lookback = self.settings.get("obv_lookback", None)
+        self.sma_period = self.settings.get("sma_period", None)
+        self.ema_period = self.settings.get("ema_period", None)
+        self.adx_period = self.settings.get("adx_period", None)
+        self.custom_indicator_param = self.settings.get("custom_indicator_param", 5)
+
+    def add_momentum_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Adds momentum indicators to the data.
+        """
+        momentum_df = pd.DataFrame(index=data.index)
+        if self.rsi_period is not None:
+            momentum_df['rsi'] = ta.momentum.RSIIndicator(
+                close=data['close'], window=self.rsi_period).rsi().bfill().ffill()
+
+        if self.macd_short is not None:
+            macd = ta.trend.MACD(
+                close=data['close'],
+                window_slow=self.macd_long,
+                window_fast=self.macd_short,
+                window_sign=self.macd_signal
+            )
+            momentum_df['macd'] = macd.macd().bfill().ffill()
+            momentum_df['macd_signal'] = macd.macd_signal().bfill().ffill()
+            momentum_df['macd_diff'] = macd.macd_diff().bfill().ffill()
+
+        if self.stoch_period is not None:
+            stochastic = ta.momentum.StochasticOscillator(
+                high=data['high'], 
+                low=data['low'], 
+                close=data['close'], 
+                window=self.stoch_period, 
+                smooth_window=self.stoch_smooth_k
+            )
+            momentum_df['stoch_k'] = stochastic.stoch().bfill().ffill()
+            momentum_df['stoch_d'] = stochastic.stoch_signal().bfill().ffill()
+
+        return momentum_df
+
+    def add_volatility_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Adds volatility indicators to the data.
+        """
+        volatility_df = pd.DataFrame(index=data.index)
+        if self.bollinger_period is not None:
+            bollinger = ta.volatility.BollingerBands(
+                close=data['close'], window=self.bollinger_period, window_dev=self.bollinger_std)
+            volatility_df['bollinger_mavg'] = bollinger.bollinger_mavg().bfill().ffill()
+            volatility_df['bollinger_upper'] = bollinger.bollinger_hband().bfill().ffill()
+            volatility_df['bollinger_lower'] = bollinger.bollinger_lband().bfill().ffill()
+
+        if self.atr_period is not None:
+            volatility_df['atr'] = ta.volatility.AverageTrueRange(
+                high=data['high'], low=data['low'], close=data['close'], window=self.atr_period
+            ).average_true_range().bfill().ffill()
+
+        return volatility_df
+
+    def add_volume_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Adds volume-based indicators to the data.
+        """
+        volume_df = pd.DataFrame(index=data.index)
+        if self.vwap_period is not None:
+            volume_df['vwap'] = ta.volume.VolumeWeightedAveragePrice(
+                high=data['high'], low=data['low'], close=data['close'], volume=data['volume'], 
+                window=self.vwap_period
+            ).volume_weighted_average_price().bfill().ffill()
+
+        if self.obv_lookback is not None:
+            volume_df['obv'] = ta.volume.OnBalanceVolumeIndicator(
+                close=data['close'], volume=data['volume']
+            ).on_balance_volume().bfill().ffill()
+
+        return volume_df
+
+    def add_trend_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Adds trend-based indicators to the data.
+        """
+        trend_df = pd.DataFrame(index=data.index)
+        if self.sma_period is not None:
+            trend_df['sma'] = ta.trend.SMAIndicator(
+                close=data['close'], window=self.sma_period
+            ).sma_indicator().bfill().ffill()
+
+        if self.ema_period is not None:
+            trend_df['ema'] = ta.trend.EMAIndicator(
+                close=data['close'], window=self.ema_period
+            ).ema_indicator().bfill().ffill()
+
+        if self.adx_period is not None:
+            trend_df['adx'] = ta.trend.ADXIndicator(
+                high=data['high'], low=data['low'], close=data['close'], window=self.adx_period
+            ).adx().bfill().ffill()
+
+        return trend_df
+
+    def pre_run_indicators(self):
+        """
+        Initializes the indicators for the buffered data.
+        """
+        data = self.data_handler.cleaned_data
+        momentum_df = self.add_momentum_indicators(data)
+        volatility_df = self.add_volatility_indicators(data)
+        volume_df = self.add_volume_indicators(data)
+        trend_df = self.add_trend_indicators(data)
+        self.indicators = pd.concat([momentum_df, volatility_df, volume_df, trend_df], axis=1)
 
 
 if __name__ == "__main__":

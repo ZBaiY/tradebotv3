@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 
 class HistoricalDataHandler(DataHandler):
-    def __init__(self, source_file, json_file=None, cleaner_file=None, checker_file=None):
+    def __init__(self, source_file = 'config/source.json', json_file=None, cleaner_file=None, checker_file=None):
         """
         Initializes the historical data handler with source details, frequency, and optional JSON parameter files.
         :param source: Dictionary containing 'base_url' and 'endpoint'.
@@ -453,3 +453,103 @@ class HistoricalDataHandler(DataHandler):
                     print(f"Fetching rescaled data for {symbol} at interval {interval}")
                     self.save_rescaled_chunks(symbol, interval, start_date, end_date, scaler = scaler, limit=limit, rate_limit_delay=rate_limit_delay, file_type=file_type)
                 
+
+
+class SingleSymbolDataHandler:
+    def __init__(self, symbol, source_file = 'config/source.json', json_file=None, cleaner_file=None, checker_file=None):
+        """
+        Initializes the single symbol data handler with source details, frequency, and optional JSON parameter files.
+        :param symbol: The trading symbol (e.g., 'BTCUSD').
+        :param source_file: Path to the data source.
+        :param json_file: Path to the JSON file containing configuration details.
+        :param cleaner_file: Path to JSON file containing data cleaning parameters.
+        :param checker_file: Path to JSON file containing data check parameters.
+        """
+        self.symbol = symbol
+        self.source_file = source_file
+        if cleaner_file is None:
+            cleaner_file = os.path.join(os.path.dirname(__file__), 'config/cleaner.json')
+        if checker_file is None:
+            checker_file = os.path.join(os.path.dirname(__file__), 'config/checker.json')
+        
+        self.cleaner_params = self.load_params(cleaner_file)
+        self.checker_params = self.load_params(checker_file)
+        #### missing a lot parameters here, check the real-time data handler for more details
+        if json_file:
+            with open(json_file, 'r') as file:
+                fetch_config = json.load(file)
+            self.config = fetch_config.get(symbol, {})
+        else:
+            self.config = {}
+        
+        self.cleaned_data = pd.DataFrame()
+
+    ########################### Functions for loading data and backtesting ########################################
+    def load_data(self, interval_str='15m', begin_date='2023-01-01', end_date='2024-09-24'):
+        """
+        Loads historical data for the specified symbol.
+        :param interval_str: Data interval (e.g., '1d', '15m').
+        :param begin_date: Start date for the data.
+        :param end_date: End date for the data.
+        """
+        base_path = 'data/historical/processed/for_train/'
+        file_path = f'{base_path}{self.symbol}_{begin_date}_{end_date}_{interval_str}.csv'
+        self.cleaned_data = pd.read_csv(file_path)
+        
+        self.window_size = len(self.cleaned_data)
+        self.interval_str = interval_str
+
+        return self.cleaned_data
+
+    def get_data(self, clean=True, rescale=False):
+        
+        if clean:
+            return self.cleaned_data
+
+    def get_last_data(self, clean=True, rescale=False):
+       
+        if clean:
+            return self.cleaned_data.iloc[-1]
+
+    def get_data_limit(self, limit, clean=True, rescale=False):
+        
+        if clean:
+            return self.cleaned_data.tail(limit)
+
+    ########################### Functions for fetching data ########################################
+
+    def load_params(self, file_path):
+        """
+        Loads parameters from a JSON file.
+        :param file_path: Path to the JSON file.
+        :return: Dictionary containing the parameters.
+        """
+        if file_path and os.path.exists(file_path):
+            with open(file_path, 'r') as file:
+                return json.load(file)
+        return {}
+
+    def ensure_correct_format(self, date_str):
+        """
+        Ensures the date string is in the correct format.
+        :param date_str: Date string to check and format.
+        """
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            date_obj = pd.to_datetime(date_str, utc=True)
+            date_str = date_obj.strftime('%Y-%m-%d %H:%M:%S')
+        return date_str
+
+    def file_path(self, interval, start_date, end_date=None, process=False, raw=False, rescaled=False, file_type='csv'):
+        
+        if end_date is None:
+            end_date = datetime.now(pytz.UTC).strftime('%Y-%m-%d')
+        if raw:
+            return f'data/historical/for_train/raw/{self.symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+        if rescaled:
+            return f'data/historical/for_train/rescaled/{self.symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+        if process:
+            return f'data/historical/for_train/processed/{self.symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+        else:
+            print("Please specify the type of data to save.")

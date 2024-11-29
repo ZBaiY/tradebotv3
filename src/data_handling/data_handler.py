@@ -14,7 +14,7 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
 class DataHandler:
-    def __init__(self, source_file): 
+    def __init__(self, source_file = 'config/source.json'): 
         """
         Base class for data handling (historical and real-time).
         :param source: Dictionary containing base_url and other API-related parameters.

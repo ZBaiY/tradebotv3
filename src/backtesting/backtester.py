@@ -1,14 +1,16 @@
 import os
 import sys
+from typing import List, Union
 # Add the src directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from src.data_handling.historical_data_handler import HistoricalDataHandler
+from src.data_handling.historical_data_handler import HistoricalDataHandler, SingleSymbolDataHandler
 from src.portfolio_management.risk_manager import RiskManager
 from src.portfolio_management.single_risk import SingleRiskManager
 from src.strategy.multi_asset_strategy import MultiAssetStrategy
+from src.feature_engineering.feature_extractor import FeatureExtractor, SingleSymbolFeatureExtractor
 
 from src.strategy.single_asset_strategy import SingleAssetStrategy
-from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor, NonMemSymbolProcessor
+from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor, NonMemSymbolProcessor, MemSymbolProcessor
 from src.models.base_model import ForTesting as TestModel
 from src.portfolio_management.portfolio_manager import PortfolioManager
 from src.backtesting.performance_evaluation import MultiAssetPerformanceEvaluator, SingleAssetPerformanceEvaluator
@@ -20,9 +22,9 @@ class SingleAssetBacktester:
     """
     A backtester for single-asset trading strategies.
     """
-    def __init__(self, strategy: SingleAssetStrategy, data_handler: HistoricalDataHandler,
-                 portfolio_manager: PortfolioManager, risk_manager: SingleRiskManager,
-                order_manager: OrderManager,initial_capital: float = 100000.0):
+    def __init__(self, symbol, strategy: SingleAssetStrategy = None, data_handler: SingleSymbolDataHandler = None,
+                 feature_handler: SingleSymbolFeatureExtractor = None, signal_processor: List[Union[NonMemSymbolProcessor, MemSymbolProcessor]] = [],
+                 risk_manager: SingleRiskManager = None, order_manager: OrderManager = None, initial_capital: float = 100000.0):
         """
         Initializes the SingleAssetBacktester.
 
@@ -34,9 +36,12 @@ class SingleAssetBacktester:
             execution_handler (ExecutionHandler): Simulates trade execution.
             initial_capital (float): Starting capital for the backtest.
         """
+        
+        self.symbol = symbol
+        self.data_handler = data_handler if data_handler else SingleSymbolDataHandler(self.symbol)
+        self.feature_handler = feature_handler if feature_handler else FeatureExtractor(self.symbol, self.data_handler)
+        
         self.strategy = strategy
-        self.data_handler = data_handler
-        self.portfolio_manager = portfolio_manager
         self.risk_manager = risk_manager
         self.initial_capital = initial_capital
         self.order_manager = order_manager
@@ -45,6 +50,10 @@ class SingleAssetBacktester:
         self.current_date = None
         self.portfolio_value = initial_capital
         self.trade_log = []
+
+    def run_initialization(self):
+        pass
+        
 
     def run_backtest(self, start_date: str, end_date: str):
         """
@@ -64,23 +73,18 @@ class SingleAssetBacktester:
 
             market_data = self.data_handler.get_latest_data()
             signal = self.strategy.generate_signal(market_data)
-            allocation = self.portfolio_manager.update_portfolio(
-                signal, market_data, self.current_date
-            )
+            
             risk_adjusted_allocation = self.risk_manager.adjust_position(allocation)
             trade = self.order_manager.execute_order(risk_adjusted_allocation, market_data)
 
             # Log trade and update portfolio value
             if trade:
                 self.trade_log.append(trade)
-            self.portfolio_value = self.portfolio_manager.get_portfolio_value()
 
         print("Single-asset backtest completed.")
 
     def evaluate_performance(self):
         """
-        Evaluates the performance of the strategy.
-
         Returns:
             dict: Performance metrics such as Sharpe Ratio, max drawdown, etc.
         """
@@ -89,24 +93,21 @@ class SingleAssetBacktester:
         metrics = performance_eval.calculate_metrics()
         return metrics
 
-    def save_results(self, output_path: str = "single_asset_backtest_results.csv"):
-        """
-        Saves the backtest results to a CSV file.
+    def save_results(self, output_path: str = "backtest/single_asset_backtest_results.csv"):
 
-        Args:
-            output_path (str): File path to save the results.
-        """
         results_df = pd.DataFrame(self.trade_log)
         results_df.to_csv(output_path, index=False)
         print(f"Results saved to {output_path}.")
 
 class MultiAssetBacktester:
-    def __init__(self, strategy: MultiAssetStrategy, data_handler: HistoricalDataHandler,
-                 portfolio_manager: PortfolioManager, risk_manager: RiskManager,
-                 order_manager: OrderManager,initial_capital: float = 100000.0):
+    def __init__(self, strategy: MultiAssetStrategy = None, data_handler: HistoricalDataHandler = None,
+                 feature_handler: FeatureExtractor = None, signal_processor: List[NonMemSignalProcessor, SignalProcessor] = [],
+                 portfolio_manager: PortfolioManager = None, risk_manager: RiskManager = None,
+                 order_manager: OrderManager = None,initial_capital: float = 100000.0):
         
         self.strategy = strategy
-        self.data_handler = data_handler
+        self.data_handler = data_handler if data_handler else HistoricalDataHandler()
+        self.feature_handler = feature_handler if feature_handler else FeatureExtractor(self.data_handler)
         self.portfolio_manager = portfolio_manager
         self.risk_manager = risk_manager
         self.initial_capital = initial_capital
