@@ -17,6 +17,9 @@ from src.backtesting.performance_evaluation import MultiAssetPerformanceEvaluato
 from src.live_trading.order_manager import OrderManager
 
 import pandas as pd
+import json
+import numpy as np
+import tqdm
 
 class SingleAssetBacktester:
     """
@@ -39,21 +42,48 @@ class SingleAssetBacktester:
         
         self.symbol = symbol
         self.data_handler = data_handler if data_handler else SingleSymbolDataHandler(self.symbol)
+        self.data_handler_copy = self.data_handler.copy()
         self.feature_handler = feature_handler if feature_handler else FeatureExtractor(self.symbol, self.data_handler)
-        
+        self.realtime_settings = json.load(open('config/fetch_real_time.json'))
+        self.window_size = self.realtime_settings['memory_stting']['window_size']
         self.strategy = strategy
         self.risk_manager = risk_manager
         self.initial_capital = initial_capital
         self.order_manager = order_manager
-
         # Internal tracking
         self.current_date = None
         self.portfolio_value = initial_capital
         self.trade_log = []
 
     def run_initialization(self):
+        # self.data_handler_copy is used for the initialization of the strategy
         pass
         
+    def equity_balance(self):
+        pass
+
+    def equity_balance_tools(self):
+        pass
+
+    def update_equity_balance(self):
+        pass
+
+    def update_equity_balance_tools(self):  
+        pass
+
+    def run_initialization(self):
+        self.equity_balance()
+        # self.initialize_Strategy(self.equity, self.balance)
+    def initialize_Strategy(self, equity, balance, data_handler_copy):
+        s_config = json.load(open('backtest/single_strategy.json'))
+        m_config = {}
+        r_config = {}
+        d_config = {}
+        m_config = s_config['model']
+        r_config = s_config['risk_manager']
+        d_config = s_config['decision_maker']
+        self.risk_manager = ...
+        self.strategy = ...
 
     def run_backtest(self, start_date: str, end_date: str):
         """
@@ -66,12 +96,17 @@ class SingleAssetBacktester:
         print("Initializing single-asset backtest...")
         self.data_handler.load_data(start_date, end_date)
         self.current_date = start_date
-
-        while not self.data_handler.is_end_of_data():
-            self.current_date = self.data_handler.current_date()
-            print(f"Processing date: {self.current_date}")
-
-            market_data = self.data_handler.get_latest_data()
+        backtest_len = len(self.data_handler.cleaned_data)
+        i = 0
+        start_date = self.data_handler.cleaned_data.index[0]
+        end_date = self.data_handler.cleaned_data.index[-1]
+        print(f"Starting backtest from {start_date} to {end_date}.")
+        while i <= backtest_len:
+            start_index = max(0, i - self.window_size)
+            self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
+            market_order = self.strategy.run_strategy_market()
+            stop_loss = self.risk_manager.get_stop_loss()
+            take_profit = self.risk_manager.get_take_profit()
             signal = self.strategy.generate_signal(market_data)
             
             risk_adjusted_allocation = self.risk_manager.adjust_position(allocation)
@@ -80,6 +115,7 @@ class SingleAssetBacktester:
             # Log trade and update portfolio value
             if trade:
                 self.trade_log.append(trade)
+            i += 1
 
         print("Single-asset backtest completed.")
 
@@ -93,8 +129,11 @@ class SingleAssetBacktester:
         metrics = performance_eval.calculate_metrics()
         return metrics
 
-    def save_results(self, output_path: str = "backtest/single_asset_backtest_results.csv"):
-
+    def save_results(self, output_path: str = "backtest/performance"):
+        strategy = self.strategy.__class__.__name__
+        variation = 'v1'
+        file_name = f"{self.symbol}_{strategy}_{variation}.csv"
+        output_path = os.path.join(output_path, file_name)
         results_df = pd.DataFrame(self.trade_log)
         results_df.to_csv(output_path, index=False)
         print(f"Results saved to {output_path}.")

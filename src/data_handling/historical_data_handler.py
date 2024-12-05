@@ -70,6 +70,11 @@ class HistoricalDataHandler(DataHandler):
             return self.cleaned_data[symbol].tail(limit)
         """if rescale:
             return self.rescaled_data[symbol].tail(limit)"""
+        
+    def copy(self):
+        copied = HistoricalDataHandler()
+        copied.cleaned_data = {symbol: data.copy() for symbol, data in self.cleaned_data.items()}
+        return copied
     
 ########################### Functions for fetching data ########################################
 
@@ -496,7 +501,7 @@ class SingleSymbolDataHandler:
         file_path = f'{base_path}{self.symbol}_{begin_date}_{end_date}_{interval_str}.csv'
         self.cleaned_data = pd.read_csv(file_path)
         
-        self.window_size = len(self.cleaned_data)
+        # self.window_size = len(self.cleaned_data)
         self.interval_str = interval_str
 
         return self.cleaned_data
@@ -515,7 +520,14 @@ class SingleSymbolDataHandler:
         
         if clean:
             return self.cleaned_data.tail(limit)
-
+        
+    def get_data_range(self, start_index, end_index, clean=True, rescale=False):
+        if clean:
+            return self.cleaned_data.iloc[start_index:end_index]
+    def copy(self):
+        copied = SingleSymbolDataHandler(self.symbol, self.source_file)
+        copied.cleaned_data = self.cleaned_data.copy()
+        return copied
     ########################### Functions for fetching data ########################################
 
     def load_params(self, file_path):
