@@ -24,7 +24,7 @@ Strategy class by it self will not do the risk management calculations.
 """
 
 class SingleAssetStrategy:
-    def __init__(self, symbol, m_config, d_config,risk_manager, data_handler, signal_processor, feature_extractor):
+    def __init__(self, symbol, m_config, d_config,risk_manager, data_handler, signal_processors, feature_extractor):
         """
         Strategy class for trading 
         a single asset.
@@ -34,7 +34,7 @@ class SingleAssetStrategy:
         # equity, balance, assigned_percentage are handled within risk managers
         self.risk_manager = risk_manager
         self.data_handler = data_handler
-        self.signal_processor = signal_processor
+        self.signal_processors = signal_processors
         self.feature_extractor = feature_extractor   
         self.model_type = m_config.get('method', None)
         self.params = m_config.get('params', {})
@@ -60,13 +60,13 @@ class SingleAssetStrategy:
         model_variant = type_parts[1]
 
         if model_category == 'ML':
-            self.model = MLModel(self.symbol, self.data_handler, self.signal_processor, self.feature_extractor, model_variant, **self.params)
+            self.model = MLModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
         elif model_category == 'Stat':
-            self.model = StatModel(self.symbol, self.data_handler, self.signal_processor, self.feature_extractor, model_variant, **self.params)
+            self.model = StatModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
         elif model_category == 'Phys':
-            self.model = PhysModel(self.symbol, self.data_handler, self.signal_processor, self.feature_extractor, model_variant, **self.params)
+            self.model = PhysModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
         elif model_category == 'Test':
-            self.model = TestModel(self.symbol, self.data_handler, self.signal_processor, self.feature_extractor, model_variant, **self.params)
+            self.model = TestModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
             """Expand the model categories as the tradebot is developed."""
         else:
             raise ValueError(f"Unknown model category: {model_category}")
@@ -90,7 +90,7 @@ class SingleAssetStrategy:
             decis = DecesionMaker.threshold_based_decision(self.prediction, **self.decision_params)
         ########## Add more decision types here
         else: decis = "hold"
-        
+        self.decision['model_decis_forbacktest'] = decis
 
         if decis == "buy":
             self.decision['signal'] = "buy"
@@ -107,6 +107,13 @@ class SingleAssetStrategy:
         else:
             self.decision['signal'] = "hold"
             self.decision['amount'] = 0
+            
+        return self.decision
+    
+    def run_strategy_market(self, data):
+        self.run_prediction(data)
+        self.make_decision_market()
+        
 
     def fit_model(self, data):
         """
@@ -131,7 +138,7 @@ class SingleAssetStrategy:
 
     def request_data(self, datahandler, column):
         return datahandler.get_data(self.symbol)[column]
-    def request_signal(self, signal_processor):
+    def request_signal(self, signal_processor): # specify the signal processor
         return signal_processor.get_signal(self.symbol)
     def request_indicators(self, feature_extractor):
         return feature_extractor.get_indicators(self.symbol)

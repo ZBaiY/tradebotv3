@@ -25,8 +25,8 @@ class SingleAssetBacktester:
     """
     A backtester for single-asset trading strategies.
     """
-    def __init__(self, symbol, strategy: SingleAssetStrategy = None, data_handler: SingleSymbolDataHandler = None,
-                 feature_handler: SingleSymbolFeatureExtractor = None, signal_processor: List[Union[NonMemSymbolProcessor, MemSymbolProcessor]] = [],
+    def __init__(self, strategy: SingleAssetStrategy = None, data_handler: SingleSymbolDataHandler = None,
+                 feature_handler: SingleSymbolFeatureExtractor = None, signal_processors: List[Union[NonMemSymbolProcessor, MemSymbolProcessor]] = [],
                  risk_manager: SingleRiskManager = None, order_manager: OrderManager = None, initial_capital: float = 100000.0):
         """
         Initializes the SingleAssetBacktester.
@@ -39,8 +39,9 @@ class SingleAssetBacktester:
             execution_handler (ExecutionHandler): Simulates trade execution.
             initial_capital (float): Starting capital for the backtest.
         """
-        
-        self.symbol = symbol
+        self.s_config = json.load(open('backtest/single_strategy.json'))
+
+        self.symbol = list(self.s_config.keys())[0]
         self.data_handler = data_handler if data_handler else SingleSymbolDataHandler(self.symbol)
         self.data_handler_copy = self.data_handler.copy()
         self.feature_handler = feature_handler if feature_handler else FeatureExtractor(self.symbol, self.data_handler)
@@ -49,41 +50,49 @@ class SingleAssetBacktester:
         self.strategy = strategy
         self.risk_manager = risk_manager
         self.initial_capital = initial_capital
+        self.equity = initial_capital
+        self.signal_processors = signal_processors
         self.order_manager = order_manager
         # Internal tracking
         self.current_date = None
-        self.portfolio_value = initial_capital
+        self.balance = 0 # asset balance, in USDT
+        self.balance_full_position = 0
+        self.equity_full_position = initial_capital
+        self.balance_history = []
+        self.balance_full_position = []
+        self.equity_history = []
         self.trade_log = []
+        self.log_model = []
 
-    def run_initialization(self):
-        # self.data_handler_copy is used for the initialization of the strategy
-        pass
-        
+    def calculate_eq_bal(self, price, quantity=0): # quantity positive for buy, negative for sell, 0 for no trade
+        USDT_balance = self.equity - self.balance
+        self.balance += quantity * price
+        USDT_balance -= quantity * price
+        self.equity = self.balance + USDT_balance
+
+
     def equity_balance(self):
-        pass
-
-    def equity_balance_tools(self):
-        pass
-
-    def update_equity_balance(self):
-        pass
-
-    def update_equity_balance_tools(self):  
-        pass
+        self.risk_manager.set_equity(self.equity)
+        self.strategy.set_equity(self.equity)
+        self.risk_manager.set_balance(self.balance)
+        self.strategy.set_balance(self.balance)
 
     def run_initialization(self):
         self.equity_balance()
-        # self.initialize_Strategy(self.equity, self.balance)
+        self.initialize_Strategy(self.equity, self.balance, self.data_handler_copy)
+
     def initialize_Strategy(self, equity, balance, data_handler_copy):
-        s_config = json.load(open('backtest/single_strategy.json'))
+        
         m_config = {}
         r_config = {}
         d_config = {}
-        m_config = s_config['model']
-        r_config = s_config['risk_manager']
-        d_config = s_config['decision_maker']
-        self.risk_manager = ...
-        self.strategy = ...
+        m_config = self.s_config[self.symbol]['model']
+        r_config = self.s_config[self.symbol]['risk_manager']
+        d_config = self.s_config[self.symbol]['decision_maker']
+        assigned_percentage = 1
+        
+        self.risk_manager = SingleRiskManager(self.symbol, equity, balance, assigned_percentage, r_config, data_handler_copy, self.signal_processors, self.feature_handler)
+        self.strategy = SingleAssetStrategy(self.symbol, m_config, d_config, self.risk_manager, data_handler_copy, self.signal_processors, self.feature_handler)
 
     def run_backtest(self, start_date: str, end_date: str):
         """
@@ -96,6 +105,8 @@ class SingleAssetBacktester:
         print("Initializing single-asset backtest...")
         self.data_handler.load_data(start_date, end_date)
         self.current_date = start_date
+        self.balance_history.append(self.balance)
+        self.equity_history.append(self.equity)
         backtest_len = len(self.data_handler.cleaned_data)
         i = 0
         start_date = self.data_handler.cleaned_data.index[0]
@@ -103,29 +114,51 @@ class SingleAssetBacktester:
         print(f"Starting backtest from {start_date} to {end_date}.")
         while i <= backtest_len:
             start_index = max(0, i - self.window_size)
+            self.current_date = self.data_handler.cleaned_data.index[i]
             self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
-            market_order = self.strategy.run_strategy_market()
-            stop_loss = self.risk_manager.get_stop_loss()
-            take_profit = self.risk_manager.get_take_profit()
-            signal = self.strategy.generate_signal(market_data)
+            market_order = self.strategy.run_strategy_market(self.data_handler_copy.cleaned_data)
+            market_order['price'] = self.data_handler_copy.cleaned_data['close'].iloc[-1]
             
-            risk_adjusted_allocation = self.risk_manager.adjust_position(allocation)
-            trade = self.order_manager.execute_order(risk_adjusted_allocation, market_data)
-
-            # Log trade and update portfolio value
-            if trade:
-                self.trade_log.append(trade)
+            if market_order['signal'] == 'hold':
+                i += 1
+                self.equity_history.append(self.equity)
+                self.balance_history.append(self.balance)
+                self.balance_full_position.append(self.balance)
+                continue
+            else:
+                log_instance, model_backtest = self.execute_order(market_order)
+                if log_instance['order'] == 'buy':
+                    self.balance_full_position = self.equity
+                    self.equity_full_position = 0
+                self.trade_log.append(log_instance) 
+                self.log_model.append(model_backtest)
+                self.equity_history.append(self.equity)
+                self.balance_history.append(self.balance)
             i += 1
 
-        print("Single-asset backtest completed.")
+        print("Single-asset backtest completed. Evaluating performance...")
 
-    def evaluate_performance(self):
+
+    def execute_order(self, market_decision):
+        order = market_decision['signal']
+        price = market_decision['price']
+        quantity = market_decision['amount']
+        if order == 'buy':
+            quantity = abs(quantity)
+        elif order == 'sell':
+            quantity = -abs(quantity)
+        self.calculate_eq_bal(price, quantity)
+        self.equity_balance()
+        return {'symbol': self.symbol, 'date': self.current_date, 'price': price, 'quantity': quantity, 'order': order, 'balance': self.balance, 'equity': self.equity}, {'symbol': self.symbol, 'date': self.current_date, 'price': price,'order': order}
+
+
+    def evaluate_performance_model(self):
         """
         Returns:
             dict: Performance metrics such as Sharpe Ratio, max drawdown, etc.
         """
         from backtesting.performance_evaluation import SingleAssetPerformanceEvaluator
-        performance_eval = SingleAssetPerformanceEvaluator(self.trade_log, self.initial_capital)
+        performance_eval = SingleAssetPerformanceEvaluator(self.log_model, self.equity_history, self.initial_capital)
         metrics = performance_eval.calculate_metrics()
         return metrics
 

@@ -54,6 +54,31 @@ class SingleAssetPerformanceEvaluator:
             'Average Win (%)': avg_win,
             'Average Loss (%)': avg_loss,
         }
+    def find_returns(self):
+        """
+        Calculates the return for each trade in the trade log and updates the log.
+
+        The return is calculated as:
+            (exit_price - entry_price) / entry_price * 100 for buy trades.
+            (entry_price - exit_price) / entry_price * 100 for sell trades.
+        """
+        previous_trade = None
+        for trade in self.trade_log:
+            if trade['order'] == 'buy':
+                # Record this as the entry trade
+                previous_trade = trade
+                trade['return'] = 0  # No return for the opening of a position
+            elif trade['order'] == 'sell' and previous_trade and previous_trade['order'] == 'buy':
+                # Calculate return for the closing of a buy position
+                entry_price = previous_trade['price']
+                exit_price = trade['price']
+                trade_return = ((exit_price - entry_price) / entry_price) * 100
+                trade['return'] = trade_return
+                previous_trade['return'] = trade_return
+                previous_trade = None  # Reset previous trade after closing position
+            else:
+                trade['return'] = 0  # No meaningful return for other orders
+
 
     def get_roi(self):
         net_profit = self.balance_history[-1] - self.initial_balance
