@@ -48,6 +48,9 @@ class SingleAssetBacktester:
         self.realtime_settings = json.load(open('config/fetch_real_time.json'))
         self.window_size = self.realtime_settings['memory_stting']['window_size']
         self.strategy = strategy
+        self.model_category = None
+        self.model_variant = None
+
         self.risk_manager = risk_manager
         self.initial_capital = initial_capital
         self.equity = initial_capital
@@ -55,18 +58,27 @@ class SingleAssetBacktester:
         self.order_manager = order_manager
         # Internal tracking
         self.current_date = None
-        self.balance = 0 # asset balance, in USDT
-        self.balance_full_position = 0
-        self.equity_full_position = initial_capital
-        self.balance_history = []
-        self.balance_full_position = []
-        self.equity_history = []
+        self.balance = 0 # asset balance, in USDT, for future development, only track the quantity of the asset
         self.trade_log = []
+        self.equity_history = []
+        self.balance_history = []
+        self.asset_quantity = 0
+
+
+        self.equity_full_position = initial_capital
+        self.asset_full_position = []
+        self.capital_full_position = []
         self.log_model = []
+        self.performance_metrics = None
+
+    def recalculate_balance(self, price): ### this redundancy is due to a design flaw in the risk manager
+        self.balance = self.asset_quantity * price
+        self.equity = self.balance + self.balance
 
     def calculate_eq_bal(self, price, quantity=0): # quantity positive for buy, negative for sell, 0 for no trade
         USDT_balance = self.equity - self.balance
         self.balance += quantity * price
+        self.asset_quantity += quantity
         USDT_balance -= quantity * price
         self.equity = self.balance + USDT_balance
 
@@ -90,7 +102,9 @@ class SingleAssetBacktester:
         r_config = self.s_config[self.symbol]['risk_manager']
         d_config = self.s_config[self.symbol]['decision_maker']
         assigned_percentage = 1
-        
+        self.model_category = m_config['method'].split('_')[0]
+        self.model_variant = m_config['method'].split('_')[1]
+
         self.risk_manager = SingleRiskManager(self.symbol, equity, balance, assigned_percentage, r_config, data_handler_copy, self.signal_processors, self.feature_handler)
         self.strategy = SingleAssetStrategy(self.symbol, m_config, d_config, self.risk_manager, data_handler_copy, self.signal_processors, self.feature_handler)
 
@@ -105,8 +119,12 @@ class SingleAssetBacktester:
         print("Initializing single-asset backtest...")
         self.data_handler.load_data(start_date, end_date)
         self.current_date = start_date
-        self.balance_history.append(self.balance)
+
+        self.balance_history.append(self.balance) 
         self.equity_history.append(self.equity)
+        self.capital_full_position.append(self.equity)
+        self.asset_full_position.append(self.asset_quantity)
+
         backtest_len = len(self.data_handler.cleaned_data)
         i = 0
         start_date = self.data_handler.cleaned_data.index[0]
@@ -116,27 +134,43 @@ class SingleAssetBacktester:
             start_index = max(0, i - self.window_size)
             self.current_date = self.data_handler.cleaned_data.index[i]
             self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
+            price = self.data_handler_copy.cleaned_data['close'].iloc[-1]  
+            self.recalculate_balance(price)  ### this redundancy is due to a design flaw in the risk manager
             market_order = self.strategy.run_strategy_market(self.data_handler_copy.cleaned_data)
-            market_order['price'] = self.data_handler_copy.cleaned_data['close'].iloc[-1]
+            market_order['price'] = price
+
             
             if market_order['signal'] == 'hold':
                 i += 1
+                self.balance_history.append(self.balance) 
                 self.equity_history.append(self.equity)
-                self.balance_history.append(self.balance)
-                self.balance_full_position.append(self.balance)
+                self.capital_full_position.append(self.equity)
+                self.asset_full_position.append(self.asset_quantity)
                 continue
             else:
                 log_instance, model_backtest = self.execute_order(market_order)
+                
                 if log_instance['order'] == 'buy':
-                    self.balance_full_position = self.equity
+                    self.asset_full_position = self.equity/price
                     self.equity_full_position = 0
+                elif log_instance['order'] == 'sell':
+                    self.equity_full_position = self.asset_full_position * price
+                    self.balance_full_position = 0
+
+                self.balance_history.append(self.balance) 
+                self.equity_history.append(self.equity)
+                self.capital_full_position.append(self.equity)
+                self.asset_full_position.append(self.asset_quantity)
+
                 self.trade_log.append(log_instance) 
                 self.log_model.append(model_backtest)
-                self.equity_history.append(self.equity)
-                self.balance_history.append(self.balance)
             i += 1
 
         print("Single-asset backtest completed. Evaluating performance...")
+        self.performance_metrics = self.evaluate_performance_model()
+        self.save_metrics_model
+
+        
 
 
     def execute_order(self, market_decision):
@@ -158,9 +192,17 @@ class SingleAssetBacktester:
             dict: Performance metrics such as Sharpe Ratio, max drawdown, etc.
         """
         from backtesting.performance_evaluation import SingleAssetPerformanceEvaluator
-        performance_eval = SingleAssetPerformanceEvaluator(self.log_model, self.equity_history, self.initial_capital)
+        performance_eval = SingleAssetPerformanceEvaluator(self.log_model, self.capital_full_position, self.initial_capital)
         metrics = performance_eval.calculate_metrics()
         return metrics
+    
+    def save_metrics_model(self, output_path: str = "backtest/performance"):
+        file_name = f"{self.symbol}_{self.model_category}_{self.model_variant}.json"
+        output_path = os.path.join(output_path, file_name)
+        with open(output_path, 'w') as f:
+            json.dump(self.performance_metrics, f)
+
+        print(f"Results saved to {output_path}.")
 
     def save_results(self, output_path: str = "backtest/performance"):
         strategy = self.strategy.__class__.__name__
