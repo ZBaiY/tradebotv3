@@ -11,7 +11,7 @@ import pandas as pd
 ########
 
 
-class SingleAssetPerformanceEvaluator:
+class SingleAssetModelPerformanceEvaluator:
     """
     Evaluates performance metrics for single-asset trading strategies.
     """

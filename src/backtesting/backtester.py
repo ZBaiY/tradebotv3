@@ -13,7 +13,7 @@ from src.strategy.single_asset_strategy import SingleAssetStrategy
 from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor, NonMemSymbolProcessor, MemSymbolProcessor
 from src.models.base_model import ForTesting as TestModel
 from src.portfolio_management.portfolio_manager import PortfolioManager
-from src.backtesting.performance_evaluation import MultiAssetPerformanceEvaluator, SingleAssetPerformanceEvaluator
+from src.backtesting.performance_evaluation import MultiAssetPerformanceEvaluator, SingleAssetModelPerformanceEvaluator
 from src.live_trading.order_manager import OrderManager
 
 import pandas as pd
@@ -170,7 +170,7 @@ class SingleAssetBacktester:
         self.performance_metrics = self.evaluate_performance_model()
         self.save_metrics_model
 
-        
+
 
 
     def execute_order(self, market_decision):
@@ -191,8 +191,7 @@ class SingleAssetBacktester:
         Returns:
             dict: Performance metrics such as Sharpe Ratio, max drawdown, etc.
         """
-        from backtesting.performance_evaluation import SingleAssetPerformanceEvaluator
-        performance_eval = SingleAssetPerformanceEvaluator(self.log_model, self.capital_full_position, self.initial_capital)
+        performance_eval = SingleAssetModelPerformanceEvaluator(self.log_model, self.capital_full_position, self.initial_capital)
         metrics = performance_eval.calculate_metrics()
         return metrics
     
