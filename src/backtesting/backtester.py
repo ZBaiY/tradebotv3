@@ -13,7 +13,8 @@ from src.strategy.single_asset_strategy import SingleAssetStrategy
 from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor, NonMemSymbolProcessor, MemSymbolProcessor
 from src.models.base_model import ForTesting as TestModel
 from src.portfolio_management.portfolio_manager import PortfolioManager
-from src.backtesting.performance_evaluation import MultiAssetPerformanceEvaluator, SingleAssetModelPerformanceEvaluator
+from src.backtesting.model_evaluation import MultiAssetPerformanceEvaluator, SingleAssetModelPerformanceEvaluator
+from src.backtesting.strategy_evaluation import SingleAssetStrategyEvaluator
 from src.live_trading.order_manager import OrderManager
 
 import pandas as pd
@@ -69,7 +70,8 @@ class SingleAssetBacktester:
         self.asset_full_position = []
         self.capital_full_position = []
         self.log_model = []
-        self.performance_metrics = None
+        self.performance_metrics_model = None
+        self.performance_metrics_strategy = None
 
     def recalculate_balance(self, price): ### this redundancy is due to a design flaw in the risk manager
         self.balance = self.asset_quantity * price
@@ -167,7 +169,7 @@ class SingleAssetBacktester:
             i += 1
 
         print("Single-asset backtest completed. Evaluating performance...")
-        self.performance_metrics = self.evaluate_performance_model()
+        self.performance_metrics_model = self.evaluate_performance_model()
         self.save_metrics_model
 
 
@@ -195,21 +197,31 @@ class SingleAssetBacktester:
         metrics = performance_eval.calculate_metrics()
         return metrics
     
-    def save_metrics_model(self, output_path: str = "backtest/performance"):
+    def evaluate_performance_strategy(self):
+        """
+        Returns:
+            dict: Performance metrics such as Sharpe Ratio, max drawdown, etc.
+        """
+        performance_eval = SingleAssetStrategyEvaluator(self.trade_log, self.equity_history, self.balance_history, self.initial_capital)
+        metrics = performance_eval.calculate_metrics()
+        return metrics
+    
+    def save_metrics_model(self, output_path: str = "backtest/performance/model"):
         file_name = f"{self.symbol}_{self.model_category}_{self.model_variant}.json"
         output_path = os.path.join(output_path, file_name)
         with open(output_path, 'w') as f:
-            json.dump(self.performance_metrics, f)
+            json.dump(self.performance_metrics_model, f)
 
         print(f"Results saved to {output_path}.")
 
-    def save_results(self, output_path: str = "backtest/performance"):
+    def save_metrics_strategy(self, output_path: str = "backtest/performance/strategy"):
         strategy = self.strategy.__class__.__name__
         variation = 'v1'
-        file_name = f"{self.symbol}_{strategy}_{variation}.csv"
+        file_name = f"{self.symbol}_{strategy}_{variation}.json"
         output_path = os.path.join(output_path, file_name)
-        results_df = pd.DataFrame(self.trade_log)
-        results_df.to_csv(output_path, index=False)
+        with open(output_path, 'w') as f:
+            json.dump(self.performance_metrics_strategy, f)
+
         print(f"Results saved to {output_path}.")
 
 class MultiAssetBacktester:
