@@ -13,8 +13,8 @@ from src.strategy.single_asset_strategy import SingleAssetStrategy
 from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor, NonMemSymbolProcessor, MemSymbolProcessor
 from src.models.base_model import ForTesting as TestModel
 from src.portfolio_management.portfolio_manager import PortfolioManager
-from src.backtesting.model_evaluation import MultiAssetPerformanceEvaluator, SingleAssetModelPerformanceEvaluator
-from src.backtesting.strategy_evaluation import SingleAssetStrategyEvaluator
+from src.backtesting.model_evaluation import  SingleAssetModelPerformanceEvaluator
+from src.backtesting.strategy_evaluation import SingleAssetStrategyEvaluator, MultiSymbolStrategyEvaluator
 from src.live_trading.order_manager import OrderManager
 
 import pandas as pd
@@ -232,11 +232,10 @@ class MultiAssetBacktester:
         
         self.s_config = json.load(open('backtest/strategy.json'))
 
-        self.initial_capital = initial_capital
-        self.total_equity = initial_capital
         self.symbols = list(self.s_config.keys())
 
         self.data_handler = data_handler if data_handler else MultiSymbolDataHandler(self.symbols)
+        self.data_handler_copy = self.data_handler.copy()
         self.feature_handler = feature_handler
         self.signal_processors = signal_processors
         self.portfolio_manager = portfolio_manager
@@ -244,26 +243,63 @@ class MultiAssetBacktester:
         self.order_manager = order_manager
         self.strategy = strategy
 
-        # Tracking balances and orders
-        self.balances_symbol = {symbol: 0.0 for symbol in self.symbols}  # Balance for each symbol
-        self.balances_usdt = 0.0  # USDT balance
+
+        self.total_equity = initial_capital
+        self.balances_symbol = {symbol: 0.0 for symbol in self.symbols}  # Value of holdings (e.g., BTC * price)
+        self.quantity_symbols = {symbol: 0.0 for symbol in self.symbols}  # Quantities of holdings
+        self.balances_usdt = initial_capital  # Starting capital in USDT
         self.entry_prices = {symbol: 0.0 for symbol in self.symbols}
         self.equity_history = []
         self.balance_history = {symbol: [] for symbol in self.symbols}
         self.trade_logs = {symbol: [] for symbol in self.symbols}
 
-
     def equity_balance(self):
         """
-        Calculate and update equity based on current balances and prices.
+        Calculate and update equity and balances dynamically based on quantities and prices.
         """
-        self.balances_usdt = self.order_manager.get_account_balance("USDT")  # Mock for backtesting
-        total_equity = self.balances_usdt
+        total_equity = self.balances_usdt  # Start with the USDT balance
         for symbol in self.symbols:
             price = self.data_handler.get_symbol_last_data(symbol)['close']
-            total_equity += self.balances_symbol[symbol] * price
+            self.balances_symbol[symbol] = self.quantity_symbols[symbol] * price
+            total_equity += self.balances_symbol[symbol]
         self.total_equity = total_equity
         return total_equity
+
+    def run_initialization(self):
+        """
+        Initialize the backtester by setting up equity, balances, and tools.
+        """
+        self.equity_balance()
+        self.initialize_PortfolioManager(self.total_equity, self.quantity_symbols, self.symbols, self.data_handler_copy)
+        self.initialize_Strategy(self.total_equity, self.quantity_symbols, self.data_handler_copy)
+        self.set_entry_prices()
+
+    def initialize_PortfolioManager(self, equity, quantities, symbols, data_handler):
+        """
+        Initialize the portfolio manager.
+        """
+        self.PortfolioManager = PortfolioManager(equity, quantities, symbols, data_handler)
+
+
+    def initialize_Strategy(self, equity, quantities, data_handler):
+        """
+        Initialize the multi-asset strategy.
+        """
+        s_config = json.load(open('config/strategy.json', 'r'))
+        m_config, r_config, d_config = {}, {}, {}
+
+        for symbol in self.symbols:
+            m_config[symbol] = s_config[symbol]['model']
+            r_config[symbol] = s_config[symbol]['risk_manager']
+            d_config[symbol] = s_config[symbol]['decision_maker']
+
+        self.RiskManager = RiskManager(equity, quantities, s_config, data_handler, self.signal_processors, self.feature_handler)
+        self.RiskManager.initialize_singles()
+        self.RiskManager.calculate_position()
+
+        self.Strategy = MultiAssetStrategy(equity, quantities, data_handler, self.RiskManager, m_config, d_config,
+                                        self.feature_handler, self.signal_processors)
+        self.Strategy.initialize_singles()
 
     def set_entry_prices(self):
         """
@@ -271,47 +307,61 @@ class MultiAssetBacktester:
         """
         for symbol in self.symbols:
             self.entry_prices[symbol] = self.entry_price(symbol)
-        self.risk_manager.set_entry_price(self.entry_prices)
-
+        self.RiskManager.set_entry_price(self.entry_prices)
     def entry_price(self, symbol):
         """
-        Calculate the weighted average entry price for the current open position of a symbol.
+        Calculate the weighted average entry price for a current open position of a specific symbol.
+        :param symbol: The symbol to calculate the entry price for (e.g., 'BTCUSDT').
+        :return: The weighted average entry price or 0 if no open position.
         """
-        past_trades = self.order_manager.fetch_past_trades_from_api(symbol)  # Mocked for backtesting
-        total_qty, total_cost = 0.0, 0.0
-        for trade in past_trades:
-            trade_qty = float(trade["executedQty"])
-            trade_price = float(trade["price"])
-            total_qty += trade_qty
-            total_cost += trade_qty * trade_price
-        return total_cost / total_qty if total_qty > 0 else 0.0
+        total_bought_qty = 0.0
+        total_cost = 0.0
+        remaining_qty = 0.0
+
+        # Iterate through the trade log for the given symbol
+        for trade in self.trade_logs[symbol]:
+            trade_qty = trade["amount"]
+            trade_price = trade["price"]
+            trade_type = trade["type"]  # 'buy' or 'sell'
+
+            if trade_type == "buy":
+                total_cost += trade_qty * trade_price
+                total_bought_qty += trade_qty
+                remaining_qty += trade_qty
+            elif trade_type == "sell":
+                remaining_qty -= trade_qty
+                # If more quantity is sold than was bought, reset total cost and quantities
+                if remaining_qty < 0:
+                    remaining_qty = 0
+                    total_cost = 0
+                    total_bought_qty = 0
+
+        # Calculate the weighted average entry price based on remaining open position
+        if remaining_qty > 0:
+            weighted_entry_price = total_cost / total_bought_qty
+            return weighted_entry_price
+        else:
+            return 0.0
+        
 
     def run_backtest(self, start_date: str, end_date: str):
         """
         Run the backtest for all symbols within the specified date range.
         """
         print(f"Starting backtest from {start_date} to {end_date}.")
-
-        # Load data for symbols
         self.data_handler.load_data(begin_date=start_date, end_date=end_date)
-        self.equity_balance()
+        self.run_initialization()
 
-        # Backtesting loop
-        for current_date in self.data_handler.symbol_handlers[self.symbols[0]].get_data_range(0, -1).index:  # Assuming all symbols have same date range
+        for current_date in self.data_handler.symbol_handlers[self.symbols[0]].get_data_range(0, -1).index:
             for symbol in self.symbols:
-                self.data_handler.get_symbol_data(symbol)  # Fetch latest data
-
-                # Generate signals from strategy
-                market_orders = self.strategy.run_strategy_market()
-
-                # Process market orders
+                self.data_handler.get_symbol_data(symbol)
+                market_orders = self.Strategy.run_strategy_market()
                 for symbol, order in market_orders.items():
                     if order["signal"] == "hold":
                         continue
                     self.execute_order(symbol, order)
 
-            # Update equity and balances
-            self.equity_balance()
+            self.equity_balance()  # Update equity and balances dynamically
             self.log_state(current_date)
 
         print("Backtest completed. Calculating performance.")
@@ -329,11 +379,11 @@ class MultiAssetBacktester:
             cost = amount * price
             if self.balances_usdt >= cost:
                 self.balances_usdt -= cost
-                self.balances_symbol[symbol] += amount
+                self.quantity_symbols[symbol] += amount
         elif order_type == "sell":
-            if self.balances_symbol[symbol] >= amount:
+            if self.quantity_symbols[symbol] >= amount:
                 self.balances_usdt += amount * price
-                self.balances_symbol[symbol] -= amount
+                self.quantity_symbols[symbol] -= amount
 
         trade_log = {
             "symbol": symbol,
@@ -346,7 +396,7 @@ class MultiAssetBacktester:
 
     def log_state(self, current_date):
         """
-        Log the current state of equity and balances.
+        Log the current state of equity, balances, and quantities.
         """
         self.equity_history.append({
             "date": current_date,
@@ -355,35 +405,51 @@ class MultiAssetBacktester:
         for symbol in self.symbols:
             self.balance_history[symbol].append({
                 "date": current_date,
-                "balance": self.balances_symbol[symbol]
+                "balance": self.balances_symbol[symbol],
+                "quantity": self.quantity_symbols[symbol]
             })
 
     def evaluate_performance(self):
         """
-        Evaluate the performance of the backtest.
+        Evaluate the performance of the backtest using the MultiSymbolStrategyEvaluator.
         """
-        performance = {}
-        for symbol in self.symbols:
-            performance[symbol] = {
-                "total_trades": len(self.trade_logs[symbol]),
-                "final_balance": self.balances_symbol[symbol],
-                "total_equity": self.total_equity,
-            }
-        return performance
+        # Create an evaluator instance with backtest data
+        evaluator = MultiSymbolStrategyEvaluator(
+            trade_logs=self.trade_logs,
+            equity_history=self.equity_history,
+            asset_balance_history={symbol: self.balance_history[symbol] for symbol in self.symbols},
+            initial_balance=self.initial_capital,
+        )
+
+        # Calculate comprehensive performance metrics
+        return evaluator.calculate_metrics()
 
     def save_metrics(self, output_path="backtest_results/"):
         """
         Save performance metrics to JSON files.
         """
         os.makedirs(output_path, exist_ok=True)
-        for symbol, metrics in self.evaluate_performance().items():
+
+        # Evaluate overall performance
+        performance = self.evaluate_performance()
+
+        # Save overall performance metrics
+        overall_path = os.path.join(output_path, "overall_performance.json")
+        with open(overall_path, "w") as overall_file:
+            json.dump(performance, overall_file)
+        print(f"Saved overall performance metrics to {overall_path}.")
+
+        # Save individual symbol performance metrics
+        for symbol, metrics in performance['Symbol ROI (%)'].items():
             file_name = f"{symbol}_performance.json"
             file_path = os.path.join(output_path, file_name)
             with open(file_path, "w") as file:
-                json.dump(metrics, file)
+                json.dump({"ROI (%)": metrics}, file)
             print(f"Saved performance metrics for {symbol} to {file_path}.")
 
-            
+    
+
+
 if __name__ == "__main__":
     # Example of initializing and running the Backtester
     strategy = ...  # Replace with your custom strategy
