@@ -201,7 +201,7 @@ class NonMemSignalProcessor:
 
 
 
-class MemSignalProcessor:
+class MemSymbolProcessor:
     def __init__(self, symbol, data_handler, column, filters=None, transform=None):
         """
         SignalProcessor class to process data signals.

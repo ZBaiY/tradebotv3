@@ -12,15 +12,14 @@ from src.data_handling.real_time_data_handler import LoggingHandler
 
 
 class MockOrderManager:
-    def __init__(self, mock_data_file='mock_data.json', log_dir='/mock/logs', log_file='mock_order_manager.log'):
+    def __init__(self, log_dir='/mock/logs', log_file='mock_order_manager.log'):
         # Initialize the mock data file
-        self.mock_data_file = mock_data_file
         self.orders = {}
         self.trades = []
         self.account_info = {}
         self.initialize_mock_data_file()
-        self.mock_trade_file = 'src/mock_trading/mock_past_trades.json'
-        self.mock_account_file = 'src/mock_trading/mock_account.json'
+        self.mock_trade_file = 'src/mock_trading/config/mock_past_trades.json'
+        self.mock_account_file = 'src/mock_trading/config/mock_account.json'
 
         # Initialize logging
         self.logger = self._initialize_logging(log_dir, log_file)

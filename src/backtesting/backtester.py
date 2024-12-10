@@ -231,7 +231,6 @@ class MultiAssetBacktester:
                  order_manager: OrderManager = None,initial_capital: float = 100000.0):
         
         self.s_config = json.load(open('backtest/strategy.json'))
-
         self.symbols = list(self.s_config.keys())
 
         self.data_handler = data_handler if data_handler else MultiSymbolDataHandler(self.symbols)
