@@ -67,6 +67,7 @@ class SingleAssetStrategy:
             self.model = PhysModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
         elif model_category == 'Test':
             self.model = TestModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
+            # print("Test model is used.")
             """Expand the model categories as the tradebot is developed."""
         else:
             raise ValueError(f"Unknown model category: {model_category}")

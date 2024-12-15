@@ -66,7 +66,7 @@ class SingleRiskManager:
         if sell:
             return self.equity * self.assigned_percentage * self.position
 
-    def read_json_file(file_path):
+    def read_json_file(self, file_path):
         """
         Read a JSON file and return its contents as a Python object.
         :param file_path: The path to the JSON file.
@@ -128,14 +128,19 @@ class SingleRiskManager:
             raise ValueError("Invalid method for take profit.")
     
     def setup_position(self):
+        position_requires = self.read_json_file("src/portfolio_management/model_details/position_required_fields.json")
+        
         if self.position_method == "kelly":
             self.win_rate = self.postion_params.get("win_rate", 0.6)
             self.avg_win = self.postion_params.get("avg_win", 100)
             self.avg_loss = self.postion_params.get("avg_loss", 50)
+            self.required_position_fields = position_requires["kelly"]
         elif self.position_method == "risk_based":
             self.risk_per_trade = self.postion_params.get("risk_per_trade", 0.01)
+            self.required_position_fields = position_requires["risk_based"]
         elif self.position_method == "fixed_fractional":
             self.risk_percentage = self.postion_params.get("risk_percentage", 2)
+            self.required_position_fields = position_requires["fixed_fractional"]
         else:
             raise ValueError("Invalid method for position sizing.")
         

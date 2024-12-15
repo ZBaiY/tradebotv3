@@ -27,10 +27,11 @@ class SignalProcessor:
         :filter: list, a list of filters to apply to the data, in order
         :transform: list, a list of transformations to apply to the data, in order
         """
+        self.data_handler = data_handler
         if self.data_handler.window_size is None:
             print("Please load the data handler with the cleaned data before using the SignalProcessor")
             raise Exception("Data handler not loaded")
-        self.data_handler = data_handler
+        
         self.filters = filters if filters is not None else []
         self.trans = transform if transform is not None else []
         if isinstance(data_handler, RealTimeDataHandler):
@@ -120,10 +121,11 @@ class NonMemSignalProcessor:
         :filter: list, a list of filters to apply to the data, in order
         :transform: list, a list of transformations to apply to the data, in order
         """
+        self.data_handler = data_handler
         if self.data_handler.window_size is None:
             print("Please load the data handler with the cleaned data before using the SignalProcessor")
             raise Exception("Data handler not loaded")
-        self.data_handler = data_handler
+        
         self.filters = filters if filters is not None else []
         self.trans = transform if transform is not None else []
         self.symbols = self.data_handler.symbols
@@ -208,10 +210,10 @@ class MemSymbolProcessor:
         :filter: list, a list of filters to apply to the data, in order
         :transform: list, a list of transformations to apply to the data, in order
         """
+        self.data_handler = data_handler
         if self.data_handler.window_size is None:
             print("Please load the data handler with the cleaned data before using the SignalProcessor")
             raise Exception("Data handler not loaded")
-        self.data_handler = data_handler
         self.filters = filters if filters is not None else []
         self.trans = transform if transform is not None else []
         self.symbol = symbol
@@ -284,10 +286,11 @@ class NonMemSymbolProcessor:
         :filter: list, a list of filters to apply to the data, in order
         :transform: list, a list of transformations to apply to the data, in order
         """
+        self.data_handler = data_handler
         if self.data_handler.window_size is None:
             print("Please load the data handler with the cleaned data before using the SignalProcessor")
             raise Exception("Data handler not loaded")
-        self.data_handler = data_handler
+        
         self.filters = filters if filters is not None else []
         self.trans = transform if transform is not None else []
         self.symbol = symbol

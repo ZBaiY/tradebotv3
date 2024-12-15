@@ -2,15 +2,15 @@
     "BTCUSDT": {
         "model": {"method": "Test_type0", "params": {"para1": "p1", "para2": "p2"}},
         "risk_manager": {"stop_method": "atr", "stop_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
-                         "take_method": "atr", "take_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
-                         "position_method": "atr", "position_params": {"risk_per_trade": 1.0}},
+                         "take_method": "risk_reward", "take_params": {"risk_reward_ratio": 4, "take_profit": 0.1, "atr_window": 14},
+                         "position_method": "risk_based", "position_params": {"risk_per_trade": 1.0}},
         "decision_maker": {"method": "threshold_mode1", "params": {"para1": "p1", "para2": "p2"}}
     },
     "ETHUSDT": {
         "model": {"method": "Test_type0", "params": {"para1": "p1", "para2": "p2"}},
         "risk_manager": {"stop_method": "atr", "stop_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
-                         "take_method": "atr", "take_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
-                         "position_method": "atr", "position_params": {"risk_per_trade": 1.0}},
+                         "take_method": "risk_reward", "take_params": {"risk_reward_ratio": 4, "take_profit": 0.1, "atr_window": 14},
+                         "position_method": "risk_based", "position_params": {"risk_per_trade": 1.0}},
         "decision_maker": {"method": "threshold_mode1", "params": {"threshold": "0.02", "para2": "p2"}}
     }
 }

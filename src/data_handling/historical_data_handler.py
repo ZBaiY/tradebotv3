@@ -472,6 +472,7 @@ class SingleSymbolDataHandler:
         """
         self.symbol = symbol
         self.source_file = source_file
+        self.json_file = json_file or 'config/fetch_real_time.json'
         if cleaner_file is None:
             cleaner_file = os.path.join(os.path.dirname(__file__), 'config/cleaner.json')
         if checker_file is None:
@@ -486,7 +487,14 @@ class SingleSymbolDataHandler:
             self.config = fetch_config.get(symbol, {})
         else:
             self.config = {}
-        
+
+        self.interval_str = self.config.get('interval', '15m')
+        memory_setting = self.config.get('memory_setting', {'window_size': 1000, 'memory_limit': 80})
+        self.memory_limit = memory_setting['memory_limit'] # Memory limit in percentage
+        self.window_size = memory_setting['window_size'] # Sliding window size
+        self.current_month = datetime.now().strftime("%Y-%m")
+        self.current_week = datetime.now().strftime("%Y-%W")
+
         self.cleaned_data = pd.DataFrame()
 
     ########################### Functions for loading data and backtesting ########################################
@@ -582,11 +590,12 @@ class MultiSymbolDataHandler:
         self.symbols = symbols
         self.source_file = source_file
         self.symbol_handlers = {}
-
+        
         for symbol in symbols:
             self.symbol_handlers[symbol] = SingleSymbolDataHandler(
                 symbol, source_file, json_file, cleaner_file, checker_file
             )
+    
 
     def load_data(self, interval_str='15m', begin_date='2023-01-01', end_date='2024-09-24'):
         """

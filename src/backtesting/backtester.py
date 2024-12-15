@@ -40,14 +40,14 @@ class SingleAssetBacktester:
             execution_handler (ExecutionHandler): Simulates trade execution.
             initial_capital (float): Starting capital for the backtest.
         """
-        self.s_config = json.load(open('backtest/single_strategy.json'))
+        self.s_config = json.load(open('backtest/config/single_strategy.json'))
 
         self.symbol = list(self.s_config.keys())[0]
         self.data_handler = data_handler if data_handler else SingleSymbolDataHandler(self.symbol)
         self.data_handler_copy = self.data_handler.copy()
-        self.feature_handler = feature_handler if feature_handler else FeatureExtractor(self.symbol, self.data_handler)
+        self.feature_handler = feature_handler if feature_handler else SingleSymbolFeatureExtractor(self.symbol, self.data_handler_copy)
         self.realtime_settings = json.load(open('config/fetch_real_time.json'))
-        self.window_size = self.realtime_settings['memory_stting']['window_size']
+        self.window_size = self.realtime_settings['memory_setting']['window_size']
         self.strategy = strategy
         self.model_category = None
         self.model_variant = None
@@ -85,6 +85,7 @@ class SingleAssetBacktester:
         self.equity = self.balance + USDT_balance
 
 
+
     def equity_balance(self):
         self.risk_manager.set_equity(self.equity)
         self.strategy.set_equity(self.equity)
@@ -92,8 +93,8 @@ class SingleAssetBacktester:
         self.strategy.set_balance(self.balance)
 
     def run_initialization(self):
-        self.equity_balance()
         self.initialize_Strategy(self.equity, self.balance, self.data_handler_copy)
+        self.equity_balance()
 
     def initialize_Strategy(self, equity, balance, data_handler_copy):
         
@@ -109,6 +110,8 @@ class SingleAssetBacktester:
 
         self.risk_manager = SingleRiskManager(self.symbol, equity, balance, assigned_percentage, r_config, data_handler_copy, self.signal_processors, self.feature_handler)
         self.strategy = SingleAssetStrategy(self.symbol, m_config, d_config, self.risk_manager, data_handler_copy, self.signal_processors, self.feature_handler)
+        self.strategy.initialize(self.risk_manager)
+
 
     def run_backtest(self, start_date: str, end_date: str):
         """
@@ -121,7 +124,6 @@ class SingleAssetBacktester:
         print("Initializing single-asset backtest...")
         self.data_handler.load_data(start_date, end_date)
         self.current_date = start_date
-
         self.balance_history.append(self.balance) 
         self.equity_history.append(self.equity)
         self.capital_full_position.append(self.equity)
@@ -138,6 +140,7 @@ class SingleAssetBacktester:
             self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
             price = self.data_handler_copy.cleaned_data['close'].iloc[-1]  
             self.recalculate_balance(price)  ### this redundancy is due to a design flaw in the risk manager
+            self.feature_handler.recalculate_indicators()
             market_order = self.strategy.run_strategy_market(self.data_handler_copy.cleaned_data)
             market_order['price'] = price
 
@@ -226,11 +229,11 @@ class SingleAssetBacktester:
 
 class MultiAssetBacktester:
     def __init__(self, strategy: MultiAssetStrategy = None, data_handler: MultiSymbolDataHandler = None,
-                 feature_handler: FeatureExtractor = None, signal_processors: List[NonMemSignalProcessor, SignalProcessor] = [],
+                 feature_handler: FeatureExtractor = None, signal_processors:  List[Union[NonMemSymbolProcessor, MemSymbolProcessor]] = [],
                  portfolio_manager: PortfolioManager = None, risk_manager: RiskManager = None,
                  order_manager: OrderManager = None,initial_capital: float = 100000.0):
         
-        self.s_config = json.load(open('backtest/strategy.json'))
+        self.s_config = json.load(open('backtest/config/strategy.json'))
         self.symbols = list(self.s_config.keys())
 
         self.data_handler = data_handler if data_handler else MultiSymbolDataHandler(self.symbols)

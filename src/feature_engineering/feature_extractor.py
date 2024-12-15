@@ -669,7 +669,7 @@ class SingleSymbolFeatureExtractor:
     def __init__(self, symbol, data_handler: SingleSymbolDataHandler=None):
         self.symbol = symbol
         self.data_handler = data_handler
-        # self.interval = self.data_handler.interval_str
+        self.interval = self.data_handler.interval_str
         self.settings = self._load_settings()
         self._initialize_indicators()
         self.indicators = pd.DataFrame()
@@ -815,6 +815,17 @@ class SingleSymbolFeatureExtractor:
         trend_df = self.add_trend_indicators(data)
         self.indicators = pd.concat([momentum_df, volatility_df, volume_df, trend_df], axis=1)
 
+    def recalculate_indicators(self):
+        """
+        Recalculates all indicators for the buffered data.
+        """
+        data = self.data_handler.cleaned_data
+        momentum_df = self.add_momentum_indicators(data)
+        volatility_df = self.add_volatility_indicators(data)
+        volume_df = self.add_volume_indicators(data)
+        trend_df = self.add_trend_indicators(data)
+        self.indicators = pd.DataFrame()
+        self.indicators = pd.concat([momentum_df, volatility_df, volume_df, trend_df], axis=1)
 
 if __name__ == "__main__":
     data_handler = RealTimeDataHandler('config/source.json', 'config/fetch_real_time.json')

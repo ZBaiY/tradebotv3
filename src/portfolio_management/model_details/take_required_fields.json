@@ -1,0 +1,5 @@
+{
+    "static":["entry_price","take_profit_percent"],
+    "trailing":["trail_percent","entry_price","max_price"],
+    "risk_reward":["risk_reward_ratio", "entry_price", "stop_loss_price"]
+}
