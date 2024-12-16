@@ -41,9 +41,14 @@ class SingleAssetBacktester:
             initial_capital (float): Starting capital for the backtest.
         """
         self.s_config = json.load(open('backtest/config/single_strategy.json'))
-
         self.symbol = list(self.s_config.keys())[0]
+        self.interval_str = self.s_config[self.symbol]['interval']
+        self.start_date = self.s_config[self.symbol]['start_date']
+        self.end_date = self.s_config[self.symbol]['end_date']
         self.data_handler = data_handler if data_handler else SingleSymbolDataHandler(self.symbol)
+        self.data_handler.set_dates(self.start_date, self.end_date)
+        self.data_handler.load_data(interval_str=self.interval_str, begin_date=self.start_date, end_date=self.end_date)
+        # print(self.data_handler.get_data().head())
         self.data_handler_copy = self.data_handler.copy()
         self.feature_handler = feature_handler if feature_handler else SingleSymbolFeatureExtractor(self.symbol, self.data_handler_copy)
         self.realtime_settings = json.load(open('config/fetch_real_time.json'))
@@ -235,8 +240,16 @@ class MultiAssetBacktester:
         
         self.s_config = json.load(open('backtest/config/strategy.json'))
         self.symbols = list(self.s_config.keys())
-
+        self.start_date = {}
+        self.interval_str = {}
+        self.end_date = {}
+        for symbol in self.symbols:
+            self.start_date[symbol] = self.s_config[symbol]['start_date']
+            self.end_date[symbol] = self.s_config[symbol]['end_date']
+            self.interval_str[symbol] = self.s_config[symbol]['interval']
         self.data_handler = data_handler if data_handler else MultiSymbolDataHandler(self.symbols)
+        self.data_handler.set_dates(self.start_date, self.end_date)
+        self.data_handler.load_data(interval_str=self.interval_str,begin_date=self.start_date, end_date=self.end_date)
         self.data_handler_copy = self.data_handler.copy()
         self.feature_handler = feature_handler
         self.signal_processors = signal_processors

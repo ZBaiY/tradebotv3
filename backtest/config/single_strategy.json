@@ -1,5 +1,8 @@
 {
     "BTCUSDT": {
+        "start_date": "2023-01-01",
+        "interval": "15m",
+        "end_date": "2024-09-24",
         "model": {"method": "Test_type0", "params": {"para1": "p1", "para2": "p2"}},
         "risk_manager": {"stop_method": "atr", "stop_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
                          "take_method": "risk_reward", "take_params": {"risk_reward_ratio": 4, "atr_window": 14},

@@ -60,7 +60,7 @@ class ForTesting(BaseModel):
         rt_trans = transform.LogReturnTransformer()
         filters = [es_filter]
         transformers = [rt_trans]
-        self.rts_processor = NonMemSymbolProcessor(self.symbol, self.data_handler, 'close',filters, transformers)
+        self.rts_processor = NonMemSymbolProcessor(self.symbol, self.data_handler, 'close', filters, transformers)
 
     
     def train(self, data):

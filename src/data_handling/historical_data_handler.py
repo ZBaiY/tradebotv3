@@ -494,10 +494,16 @@ class SingleSymbolDataHandler:
         self.window_size = memory_setting['window_size'] # Sliding window size
         self.current_month = datetime.now().strftime("%Y-%m")
         self.current_week = datetime.now().strftime("%Y-%W")
-
+        
         self.cleaned_data = pd.DataFrame()
+        self.begin_date = None
+        self.end_date = None
 
     ########################### Functions for loading data and backtesting ########################################
+    def set_dates(self, start_date, end_date):
+        self.start_date = start_date
+        self.end_date = end_date
+
     def load_data(self, interval_str='15m', begin_date='2023-01-01', end_date='2024-09-24'):
         """
         Loads historical data for the specified symbol.
@@ -534,6 +540,7 @@ class SingleSymbolDataHandler:
             return self.cleaned_data.iloc[start_index:end_index]
     def copy(self):
         copied = SingleSymbolDataHandler(self.symbol, self.source_file)
+        copied.set_dates(self.start_date, self.end_date)
         copied.cleaned_data = self.cleaned_data.copy()
         return copied
     ########################### Functions for fetching data ########################################
@@ -596,8 +603,12 @@ class MultiSymbolDataHandler:
                 symbol, source_file, json_file, cleaner_file, checker_file
             )
     
+    def set_dates(self, start_date, end_date):
+        for symbol, handler in self.symbol_handlers.items():
+            handler.set_dates(start_date[symbol], end_date[symbol])
 
-    def load_data(self, interval_str='15m', begin_date='2023-01-01', end_date='2024-09-24'):
+
+    def load_data(self, interval_str, begin_date, end_date):
         """
         Loads historical data for all symbols.
         :param interval_str: Data interval (e.g., '1d', '15m').
@@ -607,7 +618,7 @@ class MultiSymbolDataHandler:
         """
         data_dict = {}
         for symbol, handler in self.symbol_handlers.items():
-            data_dict[symbol] = handler.load_data(interval_str, begin_date, end_date)
+            data_dict[symbol] = handler.load_data(interval_str[symbol], begin_date[symbol], end_date[symbol])
         return data_dict
 
     def get_symbol_data(self, symbol, clean=True, rescale=False):
