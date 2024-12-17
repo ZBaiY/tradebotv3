@@ -911,7 +911,7 @@ class SingleSymbolFeatureExtractor:
         if 'rsi' in self.indicators.columns:
             prev_data = self.data_handler.get_data_limit(2, clean=True)
             prev_close = prev_data['close'].iloc[-2]
-            new_close = data['close'].iloc[0]
+            new_close = data['close']
             prev_rsi = {
                 'avg_gain': self.helpers['avg_gain'].iloc[-2],
                 'avg_loss': self.helpers['avg_loss'].iloc[-2],
@@ -928,7 +928,7 @@ class SingleSymbolFeatureExtractor:
                 'long_ema': self.helpers['macd_long_ema'].iloc[-2],
                 'macd_signal': self.indicators['macd_signal'].iloc[-2]
             }
-            new_close = data['close'].iloc[0]
+            new_close = data['close']
             updated_macd = self.update_macd(prev_macd, new_close)
 
             self.indicators.loc[last_index, 'macd'] = updated_macd['macd_value']
@@ -962,7 +962,7 @@ class SingleSymbolFeatureExtractor:
                 'sma': self.indicators['bollinger_mavg'].iloc[-2],  # Middle band (SMA)
                 'stddev': (self.indicators['bollinger_upper'].iloc[-2] - self.indicators['bollinger_mavg'].iloc[-2]) / self.bollinger_std
             }
-            new_close = data['close'].iloc[0]
+            new_close = data['close']
             updated_bollinger = self.update_bollinger_bands(prev_bollinger, new_close)
             self.indicators.loc[last_index, 'bollinger_mavg'] = updated_bollinger['sma']
             self.indicators.loc[last_index, 'bollinger_upper'] = updated_bollinger['upper_band']
@@ -975,7 +975,7 @@ class SingleSymbolFeatureExtractor:
                 'atr': self.indicators['atr'].iloc[-2],
                 'prev_close': prev_close
             }
-            updated_atr = self.update_atr(prev_atr, data['high'].iloc[0], data['low'].iloc[0], data['close'].iloc[0])
+            updated_atr = self.update_atr(prev_atr, data['high'], data['low'], data['close'])
             self.indicators.loc[last_index, 'atr'] = updated_atr['atr']
     
     def update_volume_indicators(self, data):
@@ -990,8 +990,8 @@ class SingleSymbolFeatureExtractor:
         last_index = self.indicators.index[-1]
         if 'vwap' in self.indicators.columns:
             prev_vwap = self.indicators['vwap'].iloc[-2]
-            new_close = data['close'].iloc[0]
-            new_volume = data['volume'].iloc[0]
+            new_close = data['close']
+            new_volume = data['volume']
             updated_vwap = self.update_vwap(prev_vwap, new_close, new_volume)
             self.indicators.loc[last_index, 'vwap'] = updated_vwap
 
@@ -999,8 +999,8 @@ class SingleSymbolFeatureExtractor:
         if 'obv' in self.indicators.columns:
             prev_obv = self.indicators['obv'].iloc[-2]
             prev_close = self.data_handler.get_data_limit(2, clean=True)['close'].iloc[-2]
-            new_close = data['close'].iloc[0]
-            new_volume = data['volume'].iloc[0]
+            new_close = data['close']
+            new_volume = data['volume']
             updated_obv = self.update_obv(prev_obv,prev_obv, new_close, new_volume)
             self.indicators.loc[last_index, 'obv'] = updated_obv
 
@@ -1014,14 +1014,14 @@ class SingleSymbolFeatureExtractor:
         last_index = self.indicators.index[-1]
         if 'sma' in self.indicators.columns:
             prev_sma = self.indicators['sma'].iloc[-2]
-            new_close = data['close'].iloc[0]
+            new_close = data['close']
             updated_sma = self.update_sma(prev_sma, new_close)
             self.indicators.loc[last_index, 'sma'] = updated_sma
 
         # Update Exponential Moving Average (EMA)
         if 'ema' in self.indicators.columns:
             prev_ema = self.indicators['ema'].iloc[-2]
-            new_close = data['close'].iloc[0]
+            new_close = data['close']
             updated_ema = self.update_ema(prev_ema, new_close)
             self.indicators.loc[last_index, 'ema'] = updated_ema
 
@@ -1032,8 +1032,8 @@ class SingleSymbolFeatureExtractor:
             prev_high = prev_data['high']
             prev_low = prev_data['low']
             prev_close = prev_data['close']
-            current_high = data['high'].iloc[0]
-            current_low = data['low'].iloc[0]
+            current_high = data['high']
+            current_low = data['low']
             updated_adx = self.update_adx(prev_high, prev_low, prev_close, current_high, current_low, prev_adx)
             self.indicators.loc[last_index, 'adx'] = updated_adx
 
@@ -1096,9 +1096,9 @@ class SingleSymbolFeatureExtractor:
         :param new_close: Latest closing price.
         :return: Updated Stochastic Oscillator values.
         """
-        new_high = data['high'].iloc[0]
-        new_low = data['low'].iloc[0]
-        new_close = data['close'].iloc[0]
+        new_high = data['high']
+        new_low = data['low']
+        new_close = data['close']
         highest_high = max(prev_stochastic['highest_high'], new_high)
         lowest_low = min(prev_stochastic['lowest_low'], new_low)
 
@@ -1239,7 +1239,7 @@ class SingleSymbolFeatureExtractor:
             updated_obv = prev_obv
         return updated_obv
     
-    def get_last_indicator(self, indicator):
+    def get_last_indicator(self, symbol,indicator):
         """
         Get the last value of a specific indicator for a given symbol.
         
@@ -1249,7 +1249,7 @@ class SingleSymbolFeatureExtractor:
         """
         return self.indicators[indicator].iloc[-1]
     
-    def get_indicators(self, indicator):
+    def get_indicators(self, symbol, indicator):
         """
         Get all the indicators for a given symbol.
         

@@ -1,5 +1,5 @@
 {
     "kelly":["entry_price","take_profit_percent"],
-    "risk_based":["trail_percent","entry_price","max_price"],
-    "fixed_fractional":["risk_reward_ratio", "entry_price", "stop_loss_price"]
+    "risk_based":["current_price","stop_loss_price","risk_per_trade"],
+    "fixed_fractional":["fixed_fraction"]
 }

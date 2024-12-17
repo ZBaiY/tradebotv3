@@ -5,8 +5,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from src.data_handling.real_time_data_handler import RealTimeDataHandler
 ## historical data handler for backtesting
-from src.data_handling.historical_data_handler import HistoricalDataHandler
-from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor, NonMemSymbolProcessor
+from src.data_handling.historical_data_handler import HistoricalDataHandler, SingleSymbolDataHandler, MultiSymbolDataHandler
+from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor, NonMemSymbolProcessor, NonMemSymbolProcessorDataSymbol
 import src.signal_processing.filters as filter
 import src.signal_processing.transform as transform
 import numpy as np
@@ -24,13 +24,12 @@ class BaseModel:
     def __init__(self, symbol, data_handler, signal_processors, feature_extractor):
         self.symbol = symbol
         self.trusted_future = 0
-        self.forcast_length = 30
+        self.forecast_length = 30
         self.data_handler = data_handler
         self.signal_processors = signal_processors
         # Remember that the signal processors are a list of signal processors, each having signals from different symbols
         self.feature_extractor = feature_extractor
         # feature extractor contains data from different symbols
-        self.prediction = []
         
 
     
@@ -56,28 +55,32 @@ class ForTesting(BaseModel):
         self.trusted_future = 10
         self.model_variant = model_variant # for test mode, this is redundant
         self.params = params
-        es_filter = filter.ExponentialSmoothingFilter(alpha=0.3)
+        # es_filter = filter.ExponentialSmoothingFilter(alpha=0.3)
+        #filters = [es_filter]
         rt_trans = transform.LogReturnTransformer()
-        filters = [es_filter]
+        filters = []
         transformers = [rt_trans]
-        self.rts_processor = NonMemSymbolProcessor(self.symbol, self.data_handler, 'close', filters, transformers)
-
+        if self.data_handler.__class__ == SingleSymbolDataHandler:
+            self.rts_processor =  NonMemSymbolProcessorDataSymbol(self.symbol, self.data_handler, 'close', filters, transformers)
+        else: self.rts_processor = NonMemSymbolProcessor(self.symbol, self.data_handler, 'close', filters, transformers)
+        # print("Test model is used.")
     
     def train(self, data):
         return data
     
-    def predict(self):
+    def predict(self, **kwargs):
         rts = self.rts_processor.apply_all().bfill().ffill()
         rts_mean = rts.mean()
-        rts_cov = rts.cov()
+        rts_var = rts.var()
         prediction = []
         rts_pred = []
         
-        rts_pred = np.random.multivariate_normal(rts_mean, rts_cov, self.forecast_length)
+        rts_pred = np.random.normal(rts_mean, np.sqrt(rts_var), self.forecast_length)
         last_price = self.data_handler.get_last_data(self.symbol)['close']
         prediction = last_price * np.exp(rts_pred.cumsum())
 
-        self.prediction = prediction
+        return prediction
+
         
     
     def preprocess(self):

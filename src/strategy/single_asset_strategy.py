@@ -11,6 +11,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from src.data_handling.real_time_data_handler import RealTimeDataHandler
+from src.data_handling.historical_data_handler import HistoricalDataHandler, SingleSymbolDataHandler, MultiSymbolDataHandler   
 from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor
 from src.models.base_model import ForTesting as TestModel
 import src.models.ml_model as MLModel
@@ -38,6 +39,8 @@ class SingleAssetStrategy:
         self.feature_extractor = feature_extractor   
         self.model_type = m_config.get('method', None)
         self.params = m_config.get('params', {})
+        self.balance = 0
+        self.assigned_equity = 0
 
         self.decision_model = d_config.get('method', None)
         self.decision_params = d_config.get('params', {})
@@ -79,15 +82,17 @@ class SingleAssetStrategy:
 
 
 
-    def run_prediction(self, data):
-        self.prediction = self.model.predict(data, **self.params)
+    def run_prediction(self):
+        self.prediction = self.model.predict(**self.params)
         self.risk_manager.request_prediction(self.prediction)
         self.risk_manager.calculate_stp()
 
 
     def make_decision_market(self):
         if self.decision_type == 'threshold':
-            self.decision_params['current_price'] = self.request_data(self.data_handler, 'close')
+            if isinstance(self.data_handler, SingleSymbolDataHandler):
+                self.decision_params['current_price'] = self.data_handler.get_last_data()['close']
+            else: self.decision_params['current_price'] = self.data_handler.get_last_data(self.symbol)['close']
             decis = DecesionMaker.threshold_based_decision(self.prediction, **self.decision_params)
         ########## Add more decision types here
         else: decis = "hold"
@@ -96,9 +101,11 @@ class SingleAssetStrategy:
         if decis == "buy":
             self.decision['signal'] = "buy"
             capital = self.risk_manager.calculate_capital(buy=True)
-            fraction = self.risk_manager.position_size
+            fraction = self.risk_manager.get_position_size()
             price = self.data_handler.get_last_data(self.symbol)['close']
             self.decision['amount'] = fraction * capital/price
+            # print(capital, fraction, price, self.decision['amount'])
+            # input("sigle asset stra 106,Press Enter to continue...")
         elif decis == "sell":
             self.decision['signal'] = "sell"
             capital = self.risk_manager.calculate_capital(sell=True)
@@ -109,11 +116,11 @@ class SingleAssetStrategy:
             self.decision['signal'] = "hold"
             self.decision['amount'] = 0
             
-        return self.decision
     
-    def run_strategy_market(self, data):
-        self.run_prediction(data)
+    def run_strategy_market(self):
+        self.run_prediction()
         self.make_decision_market()
+        return self.decision
         
 
     def fit_model(self, data):
@@ -130,7 +137,7 @@ class SingleAssetStrategy:
         pass
 
     def set_equity(self, equity):
-        self.equity = equity
+        self.assigned_equity = equity
     def set_balance(self, balance):
         self.balance = balance
     def set_assigned_percentage(self, assigned_percentage):
@@ -156,8 +163,8 @@ class DecesionMaker:
         """
         Apply threshold-based decision logic.
         """
-        current_price = kwargs.get('current_price', current_price)
-        threshold = kwargs.get('threshold', threshold)
+        current_price = kwargs.get('current_price', None)
+        threshold = kwargs.get('threshold', 0.001)
         if predictions[-1] > current_price * (1 + threshold):
             return "buy"
         elif predictions[-1] < current_price * (1 - threshold):

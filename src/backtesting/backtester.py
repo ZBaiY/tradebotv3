@@ -10,7 +10,7 @@ from src.strategy.multi_asset_strategy import MultiAssetStrategy
 from src.feature_engineering.feature_extractor import FeatureExtractor, SingleSymbolFeatureExtractor
 
 from src.strategy.single_asset_strategy import SingleAssetStrategy
-from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor, NonMemSymbolProcessor, MemSymbolProcessor
+from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor, NonMemSymbolProcessor, MemSymbolProcessor, NonMemSymbolProcessorDataSymbol
 from src.models.base_model import ForTesting as TestModel
 from src.portfolio_management.portfolio_manager import PortfolioManager
 from src.backtesting.model_evaluation import  SingleAssetModelPerformanceEvaluator
@@ -20,14 +20,15 @@ from src.live_trading.order_manager import OrderManager
 import pandas as pd
 import json
 import numpy as np
-import tqdm
+import gc
+from tqdm import tqdm
 
 class SingleAssetBacktester:
     """
     A backtester for single-asset trading strategies.
     """
     def __init__(self, strategy: SingleAssetStrategy = None, data_handler: SingleSymbolDataHandler = None,
-                 feature_handler: SingleSymbolFeatureExtractor = None, signal_processors: List[Union[NonMemSymbolProcessor, MemSymbolProcessor]] = [],
+                 feature_handler: SingleSymbolFeatureExtractor = None, signal_processors: List[Union[NonMemSymbolProcessorDataSymbol, MemSymbolProcessor]] = [],
                  risk_manager: SingleRiskManager = None, order_manager: OrderManager = None, initial_capital: float = 100000.0):
         """
         Initializes the SingleAssetBacktester.
@@ -47,7 +48,6 @@ class SingleAssetBacktester:
         self.end_date = self.s_config[self.symbol]['end_date']
         self.data_handler = data_handler if data_handler else SingleSymbolDataHandler(self.symbol)
         self.data_handler.set_dates(self.start_date, self.end_date)
-        self.data_handler.load_data(interval_str=self.interval_str, begin_date=self.start_date, end_date=self.end_date)
         # print(self.data_handler.get_data().head())
         self.data_handler_copy = self.data_handler.copy()
         self.feature_handler = feature_handler if feature_handler else SingleSymbolFeatureExtractor(self.symbol, self.data_handler_copy)
@@ -79,10 +79,13 @@ class SingleAssetBacktester:
         self.performance_metrics_strategy = None
 
     def recalculate_balance(self, price): ### this redundancy is due to a design flaw in the risk manager
+        USDT_balance = self.equity - self.balance
         self.balance = self.asset_quantity * price
-        self.equity = self.balance + self.balance
+        self.equity = USDT_balance + self.balance
 
     def calculate_eq_bal(self, price, quantity=0): # quantity positive for buy, negative for sell, 0 for no trade
+        # print(self.equity)
+        # input("backtestor 86, Press Enter to continue...")
         USDT_balance = self.equity - self.balance
         self.balance += quantity * price
         self.asset_quantity += quantity
@@ -96,6 +99,8 @@ class SingleAssetBacktester:
         self.strategy.set_equity(self.equity)
         self.risk_manager.set_balance(self.balance)
         self.strategy.set_balance(self.balance)
+        self.risk_manager.set_position(self.balance/self.equity)
+        
 
     def run_initialization(self):
         self.initialize_Strategy(self.equity, self.balance, self.data_handler_copy)
@@ -118,7 +123,7 @@ class SingleAssetBacktester:
         self.strategy.initialize(self.risk_manager)
 
 
-    def run_backtest(self, start_date: str, end_date: str):
+    def run_backtest(self):
         """
         Runs the backtest for the single asset over the specified date range.
 
@@ -127,59 +132,74 @@ class SingleAssetBacktester:
             end_date (str): End date in 'YYYY-MM-DD' format.
         """
         print("Initializing single-asset backtest...")
-        self.data_handler.load_data(start_date, end_date)
-        self.current_date = start_date
+        self.data_handler.load_data(interval_str=self.interval_str, begin_date=self.start_date, end_date=self.end_date)
         self.balance_history.append(self.balance) 
         self.equity_history.append(self.equity)
         self.capital_full_position.append(self.equity)
         self.asset_full_position.append(self.asset_quantity)
-
-        backtest_len = len(self.data_handler.cleaned_data)
-        i = 1
+        i = 100
+        backtest_len = len(self.data_handler.cleaned_data)-i
         start_date = self.data_handler.cleaned_data.index[0]
         end_date = self.data_handler.cleaned_data.index[-1]
         print(f"Starting backtest from {start_date} to {end_date}.")
-        while i <= backtest_len:
-            start_index = max(1, i - self.window_size)
+        start_index = max(0, i - self.window_size)
+        self.current_date = self.data_handler.cleaned_data.index[i]
+        self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
+        self.feature_handler.pre_run_indicators()
+        for i in tqdm(range(i, len(self.data_handler.cleaned_data)-1)):
+            i += 1
+            start_index = max(0, i - self.window_size)
             self.current_date = self.data_handler.cleaned_data.index[i]
             self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
-            self.feature_handler.pre_run_indicators()
-            price = self.data_handler_copy.cleaned_data['close'].iloc[-1]  
+            self.data_handler_copy.cleaned_data = self.data_handler_copy.cleaned_data.tail(self.window_size)
+            price = self.data_handler_copy.cleaned_data.iloc[-1]['close']
             self.recalculate_balance(price)  ### this redundancy is due to a design flaw in the risk manager
+            self.equity_balance()
             self.feature_handler.update(self.data_handler_copy.cleaned_data.iloc[-1])
-            market_order = self.strategy.run_strategy_market(self.data_handler_copy.cleaned_data)
+            market_order = self.strategy.run_strategy_market()
             market_order['price'] = price
+            quantity_full = 0
 
-            
             if market_order['signal'] == 'hold':
-                i += 1
                 self.balance_history.append(self.balance) 
                 self.equity_history.append(self.equity)
-                self.capital_full_position.append(self.equity)
-                self.asset_full_position.append(self.asset_quantity)
+                self.capital_full_position.append(self.equity_full_position)
+                self.asset_full_position.append(self.asset_full_position[-1])
                 continue
             else:
                 log_instance, model_backtest = self.execute_order(market_order)
                 
-                if log_instance['order'] == 'buy':
-                    self.asset_full_position = self.equity/price
+                if log_instance['order'] == 'buy' and self.equity_full_position > 0:
+                    quantity_full = self.equity_full_position/price
                     self.equity_full_position = 0
-                elif log_instance['order'] == 'sell':
-                    self.equity_full_position = self.asset_full_position * price
+                    self.log_model.append(model_backtest)
+                elif log_instance['order'] == 'sell' and self.asset_full_position[-1] > 0:
+                    quantity_full = 0
+                    self.equity_full_position = self.asset_full_position[-1] * price
                     self.balance_full_position = 0
+                    self.log_model.append(model_backtest)
+                else:
+                    model_backtest['signal'] = 'hold'
+                    self.log_model.append(model_backtest)
 
                 self.balance_history.append(self.balance) 
                 self.equity_history.append(self.equity)
-                self.capital_full_position.append(self.equity)
-                self.asset_full_position.append(self.asset_quantity)
+                self.capital_full_position.append(self.equity_full_position)
+                self.asset_full_position.append(quantity_full)
 
                 self.trade_log.append(log_instance) 
-                self.log_model.append(model_backtest)
-            i += 1
+            if i % 100 == 0:
+                del log_instance, model_backtest, market_order
+                gc.collect()
+                # print(i, log_instance)
+                # input("backtestor 183, Press Enter to continue...")
 
         print("Single-asset backtest completed. Evaluating performance...")
-        self.performance_metrics_model = self.evaluate_performance_model()
-        self.save_metrics_model
+        
+        # self.performance_metrics_model = self.evaluate_performance_model()
+        # self.save_metrics_model()
+        # self.performance_metrics_strategy = self.evaluate_performance_strategy()
+        # self.save_metrics_strategy()
 
 
 
@@ -192,6 +212,8 @@ class SingleAssetBacktester:
             quantity = abs(quantity)
         elif order == 'sell':
             quantity = -abs(quantity)
+        # print('balance', self.balance, 'equity', self.equity, 'self quantity', self.asset_quantity, 'order quantity', quantity)
+        # print('position size', self.risk_manager.position)
         self.calculate_eq_bal(price, quantity)
         self.equity_balance()
         return {'symbol': self.symbol, 'date': self.current_date, 'price': price, 'quantity': quantity, 'order': order, 'balance': self.balance, 'equity': self.equity}, {'symbol': self.symbol, 'date': self.current_date, 'price': price,'order': order}
@@ -218,6 +240,8 @@ class SingleAssetBacktester:
     def save_metrics_model(self, output_path: str = "backtest/performance/model"):
         file_name = f"{self.symbol}_{self.model_category}_{self.model_variant}.json"
         output_path = os.path.join(output_path, file_name)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
         with open(output_path, 'w') as f:
             json.dump(self.performance_metrics_model, f)
 
@@ -228,6 +252,8 @@ class SingleAssetBacktester:
         variation = 'v1'
         file_name = f"{self.symbol}_{strategy}_{variation}.json"
         output_path = os.path.join(output_path, file_name)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
         with open(output_path, 'w') as f:
             json.dump(self.performance_metrics_strategy, f)
 

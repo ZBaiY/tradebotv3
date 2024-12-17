@@ -513,7 +513,7 @@ class SingleSymbolDataHandler:
         """
         base_path = 'data/historical/processed/for_train/'
         file_path = f'{base_path}{self.symbol}_{begin_date}_{end_date}_{interval_str}.csv'
-        self.cleaned_data = pd.read_csv(file_path)
+        self.cleaned_data = pd.read_csv(file_path, index_col='open_time')
         
         # self.window_size = len(self.cleaned_data)
         self.interval_str = interval_str

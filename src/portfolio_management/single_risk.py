@@ -6,6 +6,7 @@ import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
+
 class SingleRiskManager:
     def __init__(self, symbol, equity, balance, assigned_percentage, config, datahandler, signal_processor, feature_extractor):
         """
@@ -20,10 +21,10 @@ class SingleRiskManager:
         """
 
         self.balance = balance # initially set to -1, to debug if it is set
-        self.assigned_percentage = assigned_percentage
+        self.assigned_percentage = assigned_percentage or 1.0
         self.entry_price = -1
         self.position = balance / (equity * assigned_percentage)
-        self.equity = equity
+        self.assigned_equity = equity
         self.symbol = symbol
         self.datahandler = datahandler
         self.signal_processor = signal_processor
@@ -39,9 +40,7 @@ class SingleRiskManager:
 
         self.prediction = None
         
-        self.setup_stop()
-        self.setup_take()
-        self.setup_position()
+        
         self.required_stop_fields = None
         self.required_take_fields = None
         self.required_position_fields = None
@@ -50,6 +49,10 @@ class SingleRiskManager:
         self.input_position = None
         self.take_profit = None
         self.stop_loss = None
+        self.position_size = None
+        self.setup_stop()
+        self.setup_take()
+        self.setup_position()
 
     def set_position(self, position):
         self.position = position
@@ -58,13 +61,13 @@ class SingleRiskManager:
     def set_assigned_percentage(self, assigned_percentage):
         self.assigned_percentage = assigned_percentage
     def set_equity(self, equity):
-        self.equity = equity
+        self.assigned_equity = equity
 
     def calculate_capital(self, buy=False, sell=False):
         if buy:
-            return self.equity * self.assigned_percentage * (1- self.position)
+            return self.assigned_equity * (1 - self.position)
         if sell:
-            return self.equity * self.assigned_percentage * self.position
+            return self.assigned_equity * self.position
 
     def read_json_file(self, file_path):
         """
@@ -153,9 +156,9 @@ class SingleRiskManager:
         self.input_position = self.postion_params
 
         if "current_price" in self.required_stop_fields:
-            self.input_stop['current_price'] = self.datahandler.get_last_price(self.symbol)['close']
+            self.input_stop['current_price'] = self.datahandler.get_last_data(self.symbol)['close']
         if "atr" in self.required_stop_fields:
-            self.input_stop['atr'] = self.features.get_last_indicator(self.symbol, 'atr')
+            self.input_stop['atr'] = self.feature_extractor.get_last_indicator(self.symbol, 'atr')
         
         if "max_price" in self.required_stop_fields:
             look_back_prices = self.datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
@@ -166,7 +169,7 @@ class SingleRiskManager:
             self.input_stop['prediction'] = self.prediction
         
         if "current_price" in self.required_take_fields:
-            self.input_take['current_price'] = self.datahandler.get_last_price(self.symbol)['close']
+            self.input_take['current_price'] = self.datahandler.get_last_data(self.symbol)['close']
         if "max_price" in self.required_take_fields:
             look_back_prices = self.datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
             self.input_take['max_price'] = max(look_back_prices)
@@ -179,7 +182,7 @@ class SingleRiskManager:
         if "capital" in self.required_position_fields:
             self.input_position['capital'] = self.equity * self.assigned_percentage * (1-self.position)
         if "current_price" in self.required_position_fields:
-            self.input_position['current_price'] = self.datahandler.get_last_price(self.symbol)['close']
+            self.input_position['current_price'] = self.datahandler.get_last_data(self.symbol)['close']
         if "prediction" in self.required_position_fields:
             self.input_position['prediction'] = self.prediction
 
@@ -231,6 +234,7 @@ class SingleRiskManager:
         self.calculate_stop_loss()
         self.calculate_take_profit()
         self.calculate_position_size()
+
         
     def get_stop_loss(self):
         return self.stop_loss
@@ -359,8 +363,9 @@ class TakeProfit:
         risk_reward_ratio = kwargs.get("risk_reward_ratio", 2)
         entry_price = kwargs.get("entry_price", None)
         stop_loss_price = kwargs.get("stop_loss_price", None)
-        if entry_price is None or stop_loss_price is None:
-            return -1
+        if entry_price==-1 or stop_loss_price is None:
+            return 999999999. # No position, so no take profit
+        
         risk_amount = entry_price - stop_loss_price
         take_profit_price = entry_price + (risk_amount * risk_reward_ratio)
         
@@ -407,7 +412,7 @@ class TakeProfit:
 
 
 class PositionSizing:
-    ##### Get the position size, return the fraction of capital to risk #####
+    ##### Get the position size, return the fraction of capital to operate #####
     @staticmethod
     def kelly_criterion(win_rate, avg_win, avg_loss):
         """
