@@ -135,17 +135,18 @@ class SingleAssetBacktester:
         self.asset_full_position.append(self.asset_quantity)
 
         backtest_len = len(self.data_handler.cleaned_data)
-        i = 0
+        i = 1
         start_date = self.data_handler.cleaned_data.index[0]
         end_date = self.data_handler.cleaned_data.index[-1]
         print(f"Starting backtest from {start_date} to {end_date}.")
         while i <= backtest_len:
-            start_index = max(0, i - self.window_size)
+            start_index = max(1, i - self.window_size)
             self.current_date = self.data_handler.cleaned_data.index[i]
             self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
+            self.feature_handler.pre_run_indicators()
             price = self.data_handler_copy.cleaned_data['close'].iloc[-1]  
             self.recalculate_balance(price)  ### this redundancy is due to a design flaw in the risk manager
-            self.feature_handler.recalculate_indicators()
+            self.feature_handler.update(self.data_handler_copy.cleaned_data.iloc[-1])
             market_order = self.strategy.run_strategy_market(self.data_handler_copy.cleaned_data)
             market_order['price'] = price
 
