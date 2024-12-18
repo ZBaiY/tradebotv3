@@ -1,1 +1,10 @@
-{"ROI (%)": -100.0, "Max Drawdown (%)": 100.0, "Sharpe Ratio": NaN, "Win Rate (%)": 0.0, "Profit Factor": Infinity, "Average Trade Return (%)": NaN, "Average Win (%)": 0, "Average Loss (%)": 0}
+{
+    "ROI (%)": 83.24456701182554,
+    "Max Drawdown (%)": 26.56272640613626,
+    "Sharpe Ratio": 0.0075339030851606535,
+    "Win Rate (%)": 7.52131725962952,
+    "Profit Factor": 1.0451790821524234,
+    "Average Trade Return (%)": 0.23439100466118584,
+    "Average Win (%)": 72.09420182515012,
+    "Average Loss (%)": -64.25540065557432
+}

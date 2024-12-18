@@ -16,7 +16,7 @@ class SingleAssetModelPerformanceEvaluator:
     Evaluates performance metrics for single-asset trading strategies.
     """
 
-    def __init__(self, trade_log, balance_history, initial_balance):
+    def __init__(self, trade_log, balance_history, initial_balance, interval_str):
         """
         Initializes the evaluator.
 
@@ -27,6 +27,7 @@ class SingleAssetModelPerformanceEvaluator:
         """
         self.trade_log = trade_log
         self.balance_history = balance_history
+        self.interval_str = interval_str
         self.initial_balance = initial_balance
 
     def calculate_metrics(self):
@@ -36,6 +37,7 @@ class SingleAssetModelPerformanceEvaluator:
         Returns:
             dict: Performance metrics including ROI, Sharpe Ratio, Max Drawdown, and more.
         """
+        self.find_returns()
         roi = self.get_roi()
         max_drawdown = self.max_drawdown_percentage()
         sharpe_ratio = self.get_sharpe_ratio()
@@ -54,30 +56,52 @@ class SingleAssetModelPerformanceEvaluator:
             'Average Win (%)': avg_win,
             'Average Loss (%)': avg_loss,
         }
+    
     def find_returns(self):
         """
         Calculates the return for each trade in the trade log and updates the log.
 
-        The return is calculated as:
-            (exit_price - entry_price) / entry_price * 100 for buy trades.
-            (entry_price - exit_price) / entry_price * 100 for sell trades.
+        Handles partial positions, scaling, and consecutive signals.
+
+        Returns are calculated as:
+            - Realized Return for closed portions of the position.
+            - Remaining Position Value for open portions.
         """
-        previous_trade = None
+        open_positions = []  # List to track open "buy" trades
         for trade in self.trade_log:
-            if trade['order'] == 'buy':
-                # Record this as the entry trade
-                previous_trade = trade
-                trade['return'] = 0  # No return for the opening of a position
-            elif trade['order'] == 'sell' and previous_trade and previous_trade['order'] == 'buy':
-                # Calculate return for the closing of a buy position
-                entry_price = previous_trade['price']
-                exit_price = trade['price']
-                trade_return = ((exit_price - entry_price) / entry_price) * 100
-                trade['return'] = trade_return
-                previous_trade['return'] = trade_return
-                previous_trade = None  # Reset previous trade after closing position
+            price = trade['price']
+            quantity = abs(trade['amount'])
+            order = trade['order']
+
+            if order == 'buy':
+                # Add to open positions
+                open_positions.append({'price': price, 'quantity': quantity})
+                trade['return'] = 0  # No realized return for opening a position
+
+            elif order == 'sell':
+                # Calculate realized returns for the sold quantity
+                realized_return = 0
+                remaining_quantity = quantity
+
+                while remaining_quantity > 0 and open_positions:
+                    entry = open_positions[0]  # Take the first open "buy" position
+                    if remaining_quantity >= entry['quantity']:
+                        # Fully close this position
+                        realized_return += (price - entry['price']) * entry['quantity']
+                        remaining_quantity -= entry['quantity']
+                        open_positions.pop(0)  # Remove fully closed position
+                    else:
+                        # Partially close this position
+                        realized_return += (price - entry['price']) * remaining_quantity
+                        entry['quantity'] -= remaining_quantity
+                        remaining_quantity = 0
+
+                # Calculate the percentage return
+                trade['return'] = (realized_return / (quantity * price)) * 100 if quantity > 0 else 0
+
             else:
-                trade['return'] = 0  # No meaningful return for other orders
+                # No meaningful return for unsupported orders
+                trade['return'] = 0
 
 
     def get_roi(self):
@@ -93,9 +117,19 @@ class SingleAssetModelPerformanceEvaluator:
 
     def get_sharpe_ratio(self, risk_free_rate=0.02):
         returns = np.diff(self.balance_history) / np.array(self.balance_history[:-1])
-        mean_returns = np.mean(returns)
-        std_returns = np.std(returns)
-        return (mean_returns - risk_free_rate) / std_returns if std_returns > 0 else np.nan
+        mean_returns = np.mean(returns)  # Periodic returns
+        mean_returns = returns.mean()
+        std_returns = returns.std()
+
+        # Convert risk-free rate to the interval
+        annualization_factor = {
+            '1d': 252,  # Trading days in a year
+            '1h': 252 * 24,  # Approx. trading hours in a year
+            '15m': 252 * 24 * 4  # Approx. trading 15-minute intervals in a year
+        }.get(self.interval_str, 1)
+
+        interval_risk_free_rate = (1 + risk_free_rate) ** (1 / annualization_factor) - 1
+        return (mean_returns - interval_risk_free_rate) / std_returns if std_returns > 0 else np.nan
 
     def get_win_rate(self):
         win_trades = sum(1 for trade in self.trade_log if trade.get('return', 0) > 0)
@@ -126,7 +160,7 @@ class MultiAssetPerformanceEvaluator:
     Evaluates performance metrics for multi-asset trading strategies.
     """
 
-    def __init__(self, trade_log, portfolio_value_history, initial_balance):
+    def __init__(self, trade_log, portfolio_value_history, initial_balance, interval_str):
         """
         Initializes the evaluator.
 
@@ -136,6 +170,7 @@ class MultiAssetPerformanceEvaluator:
             initial_balance (float): Initial capital for the backtest.
         """
         self.trade_log = trade_log
+        self.interval_str = interval_str
         self.portfolio_value_history = portfolio_value_history
         self.initial_balance = initial_balance
 
@@ -176,11 +211,21 @@ class MultiAssetPerformanceEvaluator:
         max_drawdown = np.max(drawdown)
         return (max_drawdown / np.max(max_accumulated_portfolio)) * 100
 
-    def get_sharpe_ratio(self, risk_free_rate=0.02):
-        returns = np.diff(self.portfolio_value_history) / np.array(self.portfolio_value_history[:-1])
-        mean_returns = np.mean(returns)
-        std_returns = np.std(returns)
-        return (mean_returns - risk_free_rate) / std_returns if std_returns > 0 else np.nan
+    def get_sharpe_ratio(self, resampled_balance, risk_free_rate=0.02):
+
+        returns = resampled_balance.pct_change().dropna()  # Periodic returns
+        mean_returns = returns.mean()
+        std_returns = returns.std()
+
+        # Convert risk-free rate to the interval
+        annualization_factor = {
+            '1d': 252,  # Trading days in a year
+            '1h': 252 * 6.5,  # Approx. trading hours in a year
+            '15m': 252 * 6.5 * 4  # Approx. trading 15-minute intervals in a year
+        }.get(self.interval_str, 1)
+
+        interval_risk_free_rate = (1 + risk_free_rate) ** (1 / annualization_factor) - 1
+        return (mean_returns - interval_risk_free_rate) / std_returns if std_returns > 0 else np.nan
 
     def get_win_rate(self):
         win_trades = sum(1 for trade in self.trade_log if trade.get('return', 0) > 0)

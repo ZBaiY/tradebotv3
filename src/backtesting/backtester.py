@@ -71,7 +71,7 @@ class SingleAssetBacktester:
         self.asset_quantity = 0
 
 
-        self.equity_full_position = initial_capital
+        self.USDT_full_position = initial_capital
         self.asset_full_position = []
         self.capital_full_position = []
         self.log_model = []
@@ -146,6 +146,7 @@ class SingleAssetBacktester:
         self.current_date = self.data_handler.cleaned_data.index[i]
         self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
         self.feature_handler.pre_run_indicators()
+        quantity_full = 0
         for i in tqdm(range(i, len(self.data_handler.cleaned_data)-1)):
             i += 1
             start_index = max(0, i - self.window_size)
@@ -158,34 +159,41 @@ class SingleAssetBacktester:
             self.feature_handler.update(self.data_handler_copy.cleaned_data.iloc[-1])
             market_order = self.strategy.run_strategy_market()
             market_order['price'] = price
-            quantity_full = 0
+            
 
             if market_order['signal'] == 'hold':
                 self.balance_history.append(self.balance) 
                 self.equity_history.append(self.equity)
-                self.capital_full_position.append(self.equity_full_position)
+                self.capital_full_position.append(self.capital_full_position[-1])
                 self.asset_full_position.append(self.asset_full_position[-1])
                 continue
             else:
                 log_instance, model_backtest = self.execute_order(market_order)
                 
-                if log_instance['order'] == 'buy' and self.equity_full_position > 0:
-                    quantity_full = self.equity_full_position/price
-                    self.equity_full_position = 0
+                if log_instance['order'] == 'buy' and self.USDT_full_position > 0:
+                    quantity_full = self.USDT_full_position/price
+                    self.USDT_full_position = 0
+                    model_backtest['amount'] = quantity_full
                     self.log_model.append(model_backtest)
+                    self.capital_full_position.append(quantity_full * price)
                 elif log_instance['order'] == 'sell' and self.asset_full_position[-1] > 0:
+                    model_backtest['amount'] = -self.asset_full_position[-1]
                     quantity_full = 0
-                    self.equity_full_position = self.asset_full_position[-1] * price
-                    self.balance_full_position = 0
+                    self.USDT_full_position = self.asset_full_position[-1] * price
                     self.log_model.append(model_backtest)
+                    self.capital_full_position.append(self.USDT_full_position)
                 else:
-                    model_backtest['signal'] = 'hold'
+                    # model_backtest['order'] = 'hold'
+                    model_backtest['amount'] = 0
                     self.log_model.append(model_backtest)
-
+                    if self.USDT_full_position > 0:
+                        self.capital_full_position.append(self.USDT_full_position)
+                    else:
+                        self.capital_full_position.append(self.asset_full_position[-1] * price)
                 self.balance_history.append(self.balance) 
                 self.equity_history.append(self.equity)
-                self.capital_full_position.append(self.equity_full_position)
                 self.asset_full_position.append(quantity_full)
+
 
                 self.trade_log.append(log_instance) 
             if i % 100 == 0:
@@ -196,8 +204,8 @@ class SingleAssetBacktester:
 
         print("Single-asset backtest completed. Evaluating performance...")
         
-        # self.performance_metrics_model = self.evaluate_performance_model()
-        # self.save_metrics_model()
+        self.performance_metrics_model = self.evaluate_performance_model()
+        self.save_metrics_model()
         # self.performance_metrics_strategy = self.evaluate_performance_strategy()
         # self.save_metrics_strategy()
 
@@ -208,6 +216,9 @@ class SingleAssetBacktester:
         order = market_decision['signal']
         price = market_decision['price']
         quantity = market_decision['amount']
+        if abs(quantity) <= 1e-10:
+            order = 'hold'
+            quantity = 0
         if order == 'buy':
             quantity = abs(quantity)
         elif order == 'sell':
@@ -224,7 +235,7 @@ class SingleAssetBacktester:
         Returns:
             dict: Performance metrics such as Sharpe Ratio, max drawdown, etc.
         """
-        performance_eval = SingleAssetModelPerformanceEvaluator(self.log_model, self.capital_full_position, self.initial_capital)
+        performance_eval = SingleAssetModelPerformanceEvaluator(self.log_model, self.capital_full_position, self.initial_capital, self.interval_str)
         metrics = performance_eval.calculate_metrics()
         return metrics
     
@@ -233,7 +244,7 @@ class SingleAssetBacktester:
         Returns:
             dict: Performance metrics such as Sharpe Ratio, max drawdown, etc.
         """
-        performance_eval = SingleAssetStrategyEvaluator(self.trade_log, self.equity_history, self.balance_history, self.initial_capital)
+        performance_eval = SingleAssetStrategyEvaluator(self.trade_log, self.equity_history, self.balance_history, self.initial_capital, self.interval_str)
         metrics = performance_eval.calculate_metrics()
         return metrics
     
@@ -243,7 +254,7 @@ class SingleAssetBacktester:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
         with open(output_path, 'w') as f:
-            json.dump(self.performance_metrics_model, f)
+            json.dump(self.performance_metrics_model, f, indent=4)  # Add indent=4 for proper formatting
 
         print(f"Results saved to {output_path}.")
 
@@ -255,7 +266,7 @@ class SingleAssetBacktester:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
         with open(output_path, 'w') as f:
-            json.dump(self.performance_metrics_strategy, f)
+            json.dump(self.performance_metrics_model, f, indent=4)
 
         print(f"Results saved to {output_path}.")
 
