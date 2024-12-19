@@ -22,7 +22,7 @@ class SingleRiskManager:
 
         self.balance = balance # initially set to -1, to debug if it is set
         self.assigned_percentage = assigned_percentage or 1.0
-        self.entry_price = -1
+        self.entry_price = -1  # initially no position
         self.position = balance / (equity * assigned_percentage)
         self.assigned_equity = equity
         self.symbol = symbol

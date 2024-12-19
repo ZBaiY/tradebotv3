@@ -12,7 +12,7 @@ class SingleAssetStrategyEvaluator:
     A unified evaluator for trading strategies, covering returns, performance, and risk metrics.
     """
 
-    def __init__(self, trade_log, equity_history, asset_balance_history, initial_balance):
+    def __init__(self, trade_log, equity_history, asset_balance_history, initial_balance, interval_str):
         """
         Initializes the evaluator.
 
@@ -23,6 +23,7 @@ class SingleAssetStrategyEvaluator:
             initial_balance (float): Initial starting balance.
         """
         self.trade_log = trade_log
+        self.interval_str = interval_str
         self.equity_history = equity_history
         self.asset_balance_history = asset_balance_history
         self.initial_balance = initial_balance
@@ -31,46 +32,48 @@ class SingleAssetStrategyEvaluator:
         """
         Calculates realized returns for each trade based on partial positions.
         """
-        open_positions = {}
+        open_positions = []  # List to track open "buy" trades
         for trade in self.trade_log:
-            symbol = trade['symbol']
             price = trade['price']
-            quantity = trade['quantity']
+            quantity = abs(trade['quantity'])
             order = trade['order']
 
             if order == 'buy':
                 # Add to open positions
-                if symbol not in open_positions:
-                    open_positions[symbol] = []
-                open_positions[symbol].append({'price': price, 'quantity': quantity})
-                trade['return'] = 0  # No realized return for the opening trade
+                open_positions.append({'price': price, 'quantity': quantity})
+                trade['return'] = 0  # No realized return for opening a position
 
             elif order == 'sell':
-                # Realize profits for the sold quantity
-                if symbol in open_positions:
-                    remaining_quantity = quantity
-                    realized_profit = 0
-                    while remaining_quantity > 0 and open_positions[symbol]:
-                        entry = open_positions[symbol][0]
-                        entry_quantity = entry['quantity']
-                        if remaining_quantity >= entry_quantity:
-                            profit = (price - entry['price']) * entry_quantity
-                            realized_profit += profit
-                            remaining_quantity -= entry_quantity
-                            open_positions[symbol].pop(0)  # Remove fully used entry
-                        else:
-                            profit = (price - entry['price']) * remaining_quantity
-                            realized_profit += profit
-                            entry['quantity'] -= remaining_quantity
-                            remaining_quantity = 0
-                    trade['return'] = realized_profit / (quantity * price) * 100 if quantity > 0 else 0
+                # Calculate realized returns for the sold quantity
+                realized_return = 0
+                remaining_quantity = quantity
+
+                while remaining_quantity > 0 and open_positions:
+                    entry = open_positions[0]  # Take the first open "buy" position
+                    if remaining_quantity >= entry['quantity']:
+                        # Fully close this position
+                        realized_return += (price - entry['price']) * entry['quantity']
+                        remaining_quantity -= entry['quantity']
+                        open_positions.pop(0)  # Remove fully closed position
+                    else:
+                        # Partially close this position
+                        realized_return += (price - entry['price']) * remaining_quantity
+                        entry['quantity'] -= remaining_quantity
+                        remaining_quantity = 0
+
+                # Calculate the percentage return
+                trade['return'] = (realized_return / (quantity * price)) * 100 if quantity > 0 else 0
+
+            else:
+                # No meaningful return for unsupported orders
+                trade['return'] = 0
 
     def calculate_metrics(self):
         """
         Combines performance and risk metrics into a single report.
         """
         self.calculate_trade_returns()  # Ensure trade returns are calculated first
-
+        
         roi = self.get_roi()
         max_drawdown = self.max_drawdown_percentage()
         sharpe_ratio = self.get_sharpe_ratio()
@@ -100,36 +103,52 @@ class SingleAssetStrategyEvaluator:
 
     def get_sharpe_ratio(self, risk_free_rate=0.02):
         returns = np.diff(self.equity_history) / np.array(self.equity_history[:-1])
-        mean_returns = np.mean(returns)
-        std_returns = np.std(returns)
-        return (mean_returns - risk_free_rate) / std_returns if std_returns > 0 else np.nan
+        mean_returns = np.mean(returns)  # Periodic returns
+        mean_returns = returns.mean()
+        std_returns = returns.std()
+
+        # Convert risk-free rate to the interval
+        annualization_factor = {
+            '1d': 252,  # Trading days in a year
+            '1h': 252 * 24,  # Approx. trading hours in a year
+            '15m': 252 * 24 * 4  # Approx. trading 15-minute intervals in a year
+        }.get(self.interval_str, 1)
+
+        interval_risk_free_rate = (1 + risk_free_rate) ** (1 / annualization_factor) - 1
+        return (mean_returns - interval_risk_free_rate) / std_returns if std_returns > 0 else np.nan
 
     def get_position_efficiency(self):
-        max_profit = sum(trade['return'] for trade in self.trade_log if trade.get('return', 0) > 0)
-        actual_profit = sum(trade['return'] for trade in self.trade_log)
+        actual_profit = sum(trade['return'] for trade in self.trade_log if 'return' in trade)
+        max_profit = sum(
+            (trade['price'] - entry['price']) * entry['quantity'] 
+            for trade in self.trade_log 
+            if trade['order'] == 'sell' 
+            for entry in self.trade_log 
+            if entry['order'] == 'buy' and entry['quantity'] > 0 and entry['price'] < trade['price']
+        )
         return (actual_profit / max_profit) * 100 if max_profit > 0 else 0
 
     def get_trade_utilization(self):
-        total_cash = sum(self.asset_balance_history)
-        total_invested = sum(self.equity_history) - total_cash
-        return (total_invested / total_cash) * 100 if total_cash > 0 else 0
+        total_cash = sum(self.asset_balance_history)  # Total cash available across history
+        total_invested = sum(self.equity_history) - total_cash  # Equity minus cash gives invested capital
+        return (total_invested / (total_cash + total_invested)) * 100 if total_cash + total_invested > 0 else 0
 
     def get_profit_attribution(self):
         attribution = {}
         for trade in self.trade_log:
             symbol = trade['symbol']
+            trade_return = trade.get('return', 0)
             if symbol not in attribution:
                 attribution[symbol] = 0
-            attribution[symbol] += trade.get('return', 0)
+            attribution[symbol] += trade_return
         return attribution
-
 
 class MultiSymbolStrategyEvaluator:
     """
     A unified evaluator for multi-symbol trading strategies, covering returns, performance, and risk metrics.
     """
 
-    def __init__(self, trade_logs, equity_history, asset_balance_history, initial_balance):
+    def __init__(self, trade_logs, equity_history, asset_balance_history, initial_balance, interval_str):
         """
         Initializes the evaluator.
 
@@ -139,6 +158,7 @@ class MultiSymbolStrategyEvaluator:
             asset_balance_history (dict): Dictionary of asset balance histories per symbol.
             initial_balance (float): Initial starting balance.
         """
+        self.interval_str = interval_str
         self.trade_logs = trade_logs  # {symbol: [trades]}
         self.equity_history = equity_history  # Total equity history
         self.asset_balance_history = asset_balance_history  # {symbol: [balances]}
@@ -217,9 +237,19 @@ class MultiSymbolStrategyEvaluator:
 
     def get_sharpe_ratio(self, risk_free_rate=0.02):
         returns = np.diff(self.equity_history) / np.array(self.equity_history[:-1])
-        mean_returns = np.mean(returns)
-        std_returns = np.std(returns)
-        return (mean_returns - risk_free_rate) / std_returns if std_returns > 0 else np.nan
+        mean_returns = np.mean(returns)  # Periodic returns
+        mean_returns = returns.mean()
+        std_returns = returns.std()
+
+        # Convert risk-free rate to the interval
+        annualization_factor = {
+            '1d': 252,  # Trading days in a year
+            '1h': 252 * 24,  # Approx. trading hours in a year
+            '15m': 252 * 24 * 4  # Approx. trading 15-minute intervals in a year
+        }.get(self.interval_str, 1)
+
+        interval_risk_free_rate = (1 + risk_free_rate) ** (1 / annualization_factor) - 1
+        return (mean_returns - interval_risk_free_rate) / std_returns if std_returns > 0 else np.nan
 
     def get_symbol_roi(self):
         """

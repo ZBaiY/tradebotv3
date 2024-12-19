@@ -602,6 +602,8 @@ class MultiSymbolDataHandler:
             self.symbol_handlers[symbol] = SingleSymbolDataHandler(
                 symbol, source_file, json_file, cleaner_file, checker_file
             )
+        self.window_size = self.symbol_handlers[symbols[0]].window_size
+        self.interval_str = self.symbol_handlers[symbols[0]].interval_str
     
     def set_dates(self, start_date, end_date):
         for symbol, handler in self.symbol_handlers.items():

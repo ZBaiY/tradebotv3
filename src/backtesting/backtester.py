@@ -206,10 +206,37 @@ class SingleAssetBacktester:
         
         self.performance_metrics_model = self.evaluate_performance_model()
         self.save_metrics_model()
-        # self.performance_metrics_strategy = self.evaluate_performance_strategy()
-        # self.save_metrics_strategy()
+        self.performance_metrics_strategy = self.evaluate_performance_strategy()
+        self.save_metrics_strategy()
 
 
+    def calculate_entry_price(self):
+        
+        total_cost = 0.0
+        total_quantity = 0.0
+
+        # Process the trade log anti-chronologically
+        for trade in reversed(self.trade_log):
+            trade_qty = trade["quantity"]
+            trade_price = trade["price"]
+            trade_type = trade["order"]  # 'buy' or 'sell'
+
+            if trade_type == "buy":
+                total_cost += trade_qty * trade_price
+                total_quantity += trade_qty
+            elif trade_type == "sell":
+                total_quantity -= trade_qty
+                # If position is fully closed, terminate early
+                if total_quantity <= 0:
+                    total_quantity = 0
+                    total_cost = 0
+                    break
+
+        # Calculate and return the weighted average entry price
+        if total_quantity > 0:
+            return total_cost / total_quantity
+        else:
+            return 0.0
 
 
     def execute_order(self, market_decision):
@@ -266,7 +293,7 @@ class SingleAssetBacktester:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
         with open(output_path, 'w') as f:
-            json.dump(self.performance_metrics_model, f, indent=4)
+            json.dump(self.performance_metrics_strategy, f, indent=4)
 
         print(f"Results saved to {output_path}.")
 
@@ -277,34 +304,36 @@ class MultiAssetBacktester:
                  order_manager: OrderManager = None,initial_capital: float = 100000.0):
         
         self.s_config = json.load(open('backtest/config/strategy.json'))
+        self.s_config = json.load(open('backtest/config/strategy.json'))
         self.symbols = list(self.s_config.keys())
-        self.start_date = {}
-        self.interval_str = {}
-        self.end_date = {}
-        for symbol in self.symbols:
-            self.start_date[symbol] = self.s_config[symbol]['start_date']
-            self.end_date[symbol] = self.s_config[symbol]['end_date']
-            self.interval_str[symbol] = self.s_config[symbol]['interval']
+        self.start_date = {symbol: self.s_config[symbol]['start_date'] for symbol in self.symbols}
+        self.end_date = {symbol: self.s_config[symbol]['end_date'] for symbol in self.symbols}
+        self.interval_str = {symbol: self.s_config[symbol]['interval'] for symbol in self.symbols}
+        self.window_size = self.data_handler.window_size
+
+
+
         self.data_handler = data_handler if data_handler else MultiSymbolDataHandler(self.symbols)
         self.data_handler.set_dates(self.start_date, self.end_date)
-        self.data_handler.load_data(interval_str=self.interval_str,begin_date=self.start_date, end_date=self.end_date)
+        self.data_handler.load_data(interval_str=self.interval_str, begin_date=self.start_date, end_date=self.end_date)
+
         self.data_handler_copy = self.data_handler.copy()
-        self.feature_handler = feature_handler
+        self.feature_handler = feature_handler if feature_handler else FeatureExtractor(self.symbols, self.data_handler_copy)
         self.signal_processors = signal_processors
-        self.portfolio_manager = portfolio_manager
+        self.portfolio_manager = portfolio_manager if portfolio_manager else PortfolioManager(initial_capital)
         self.risk_manager = risk_manager
         self.order_manager = order_manager
         self.strategy = strategy
 
-
+        self.initial_capital = initial_capital
         self.total_equity = initial_capital
-        self.balances_symbol = {symbol: 0.0 for symbol in self.symbols}  # Value of holdings (e.g., BTC * price)
-        self.quantity_symbols = {symbol: 0.0 for symbol in self.symbols}  # Quantities of holdings
-        self.balances_usdt = initial_capital  # Starting capital in USDT
-        self.entry_prices = {symbol: 0.0 for symbol in self.symbols}
+        self.balances_usdt = initial_capital
+        self.balances_symbol = {symbol: 0.0 for symbol in self.symbols}
+        self.quantity_symbols = {symbol: 0.0 for symbol in self.symbols}
         self.equity_history = []
         self.balance_history = {symbol: [] for symbol in self.symbols}
         self.trade_logs = {symbol: [] for symbol in self.symbols}
+        self.entry_prices = {symbol: 0.0 for symbol in self.symbols}
 
     def equity_balance(self):
         """
@@ -446,6 +475,35 @@ class MultiAssetBacktester:
             "date": self.data_handler.get_symbol_last_data(symbol).name
         }
         self.trade_logs[symbol].append(trade_log)
+
+    def calculate_entry_price(self, symbol):
+
+        total_cost = 0.0
+        total_quantity = 0.0
+
+        # Process the trade log for the specific symbol anti-chronologically
+        for trade in reversed(self.trade_logs[symbol]):
+            trade_qty = trade["amount"]
+            trade_price = trade["price"]
+            trade_type = trade["type"]  # 'buy' or 'sell'
+
+            if trade_type == "buy":
+                total_cost += trade_qty * trade_price
+                total_quantity += trade_qty
+            elif trade_type == "sell":
+                total_quantity -= trade_qty
+                # If position is fully closed, terminate early
+                if total_quantity <= 0:
+                    total_quantity = 0
+                    total_cost = 0
+                    break
+
+        # Calculate and return the weighted average entry price
+        if total_quantity > 0:
+            return total_cost / total_quantity
+        else:
+            return 0.0
+
 
     def log_state(self, current_date):
         """
