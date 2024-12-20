@@ -1,5 +1,9 @@
 """Should be directly called by the real-time trading module to allocate capital to crypto."""
 """Not a part of the strategy module."""
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import json
 
 # portfolio_manager.py
 
@@ -15,6 +19,19 @@ class PortfolioManager:
         self.symbols = symbols  
         self.allocation_cryp = allocation_cryp
         self.assigned_percentage = {}
+        self.path = path
+        self.config = json.load(open(self.path, 'r'))
+        self.method = self.config['method']
+        self.params = self.config['params']
+        self.assigned_percentage = {}
+        self.pre_run()
+    
+    def pre_run(self):
+        if self.method == 'equal_weight':
+            self.equal_weight()
+        else:
+            raise ValueError("Invalid method specified in the portfolio configuration file.")
+    
 
 
     def set_equity(self, equity):

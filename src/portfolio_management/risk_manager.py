@@ -37,7 +37,7 @@ class RiskManager:
         self.feature_handler = feature_handler
         self.stop_loss_threshold = None
         self.take_profit_threshold = None
-        self.entry_price = {}
+        self.entry_price = {symbol: 0 for symbol in self.symbols}        
         self.config = config
         self.risk_managers = {}
 
@@ -73,6 +73,7 @@ class RiskManager:
     
     def initialize_singles(self):
         for symbol in self.symbols:
+            
             self.risk_managers[symbol] = srMan.SingleRiskManager(symbol, self.equity, self.balances[symbol], self.assigned_percentage[symbol], self.config[symbol], self.data_handler, self.signal_processor, self.feature_handler)
             self.risk_managers[symbol].set_entry_price(self.entry_price[symbol])
         

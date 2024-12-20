@@ -472,7 +472,7 @@ class SingleSymbolDataHandler:
         """
         self.symbol = symbol
         self.source_file = source_file
-        self.json_file = json_file or 'config/fetch_real_time.json'
+        self.json_file = json_file or 'backtest/config/data_h.json'
         if cleaner_file is None:
             cleaner_file = os.path.join(os.path.dirname(__file__), 'config/cleaner.json')
         if checker_file is None:
@@ -481,13 +481,12 @@ class SingleSymbolDataHandler:
         self.cleaner_params = self.load_params(cleaner_file)
         self.checker_params = self.load_params(checker_file)
         #### missing a lot parameters here, check the real-time data handler for more details
-        if json_file:
-            with open(json_file, 'r') as file:
+        if self.json_file:
+            with open(self.json_file, 'r') as file:
                 fetch_config = json.load(file)
-            self.config = fetch_config.get(symbol, {})
+            self.config = fetch_config
         else:
             self.config = {}
-
         self.interval_str = self.config.get('interval', '15m')
         memory_setting = self.config.get('memory_setting', {'window_size': 1000, 'memory_limit': 80})
         self.memory_limit = memory_setting['memory_limit'] # Memory limit in percentage
@@ -596,19 +595,37 @@ class MultiSymbolDataHandler:
         """
         self.symbols = symbols
         self.source_file = source_file
-        self.symbol_handlers = {}
+        self.json_file = json_file or 'backtest/config/data_h.json'
+        if cleaner_file is None:
+            cleaner_file = os.path.join(os.path.dirname(__file__), 'config/cleaner.json')
+        if checker_file is None:
+            checker_file = os.path.join(os.path.dirname(__file__), 'config/checker.json')
         
-        for symbol in symbols:
-            self.symbol_handlers[symbol] = SingleSymbolDataHandler(
-                symbol, source_file, json_file, cleaner_file, checker_file
-            )
-        self.window_size = self.symbol_handlers[symbols[0]].window_size
-        self.interval_str = self.symbol_handlers[symbols[0]].interval_str
-    
-    def set_dates(self, start_date, end_date):
-        for symbol, handler in self.symbol_handlers.items():
-            handler.set_dates(start_date[symbol], end_date[symbol])
+        self.cleaner_params = self.load_params(cleaner_file)
+        self.checker_params = self.load_params(checker_file)
+        #### missing a lot parameters here, check the real-time data handler for more details
+        
+        if self.json_file:
+            with open(self.json_file, 'r') as file:
+                self.config = json.load(file)
+        else:
+            self.config = {}
 
+        self.interval_str = self.config.get('interval', '15m')
+        memory_setting = self.config.get('memory_setting', {'window_size': 1000, 'memory_limit': 80})
+        self.memory_limit = memory_setting['memory_limit'] # Memory limit in percentage
+        self.window_size = memory_setting['window_size'] # Sliding window size
+        self.current_month = datetime.now().strftime("%Y-%m")
+        self.current_week = datetime.now().strftime("%Y-%W")
+
+        self.cleaned_data = {symbol: pd.DataFrame() for symbol in self.symbols}
+        # for multi-symbol operations, pack everything into a dictionary
+        # There are lots of modules to symphony
+        self.subscribers = []
+
+    def set_dates(self, start_date, end_date):
+        self.start_date = start_date
+        self.end_date = end_date
 
     def load_data(self, interval_str, begin_date, end_date):
         """
@@ -618,10 +635,10 @@ class MultiSymbolDataHandler:
         :param end_date: End date for the data.
         :return: Dictionary of dataframes keyed by symbol.
         """
-        data_dict = {}
-        for symbol, handler in self.symbol_handlers.items():
-            data_dict[symbol] = handler.load_data(interval_str[symbol], begin_date[symbol], end_date[symbol])
-        return data_dict
+        for symbol in self.symbols:
+            base_path = 'data/historical/processed/for_train/'
+            file_path = f'{base_path}{symbol}_{begin_date}_{end_date}_{interval_str}.csv'
+            self.cleaned_data[symbol] = pd.read_csv(file_path, index_col='open_time')
 
     def get_symbol_data(self, symbol, clean=True, rescale=False):
         """
@@ -646,7 +663,7 @@ class MultiSymbolDataHandler:
         if symbol in self.symbol_handlers:
             return self.symbol_handlers[symbol].get_last_data(clean, rescale)
         raise ValueError(f"Symbol {symbol} not managed by this handler.")
-
+    
     def get_symbol_data_limit(self, symbol, limit, clean=True, rescale=False):
         """
         Fetches the last N rows of data for a specific symbol.
@@ -752,5 +769,52 @@ class MultiSymbolDataHandler:
 
     def copy(self):
         copied = MultiSymbolDataHandler(self.symbols, self.source_file)
-        copied.symbol_handlers = {symbol: handler.copy() for symbol, handler in self.symbol_handlers.items()}
+        copied.cleaned_data = self.cleaned_data.copy()
         return copied
+    
+    def subscribe(self, subscriber):
+        self.subscribers.append(subscriber)
+    
+    def notify_subscribers(self):
+        # Notify all subscribers
+        # Make sure the order: feature, signal processor -> 
+        for subscriber in self.subscribers:
+            subscriber.update(self)
+
+
+
+    def load_params(self, file_path):
+        """
+        Loads parameters from a JSON file.
+        :param file_path: Path to the JSON file.
+        :return: Dictionary containing the parameters.
+        """
+        if file_path and os.path.exists(file_path):
+            with open(file_path, 'r') as file:
+                return json.load(file)
+        return {}
+
+    def ensure_correct_format(self, date_str):
+        """
+        Ensures the date string is in the correct format.
+        :param date_str: Date string to check and format.
+        """
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            date_obj = pd.to_datetime(date_str, utc=True)
+            date_str = date_obj.strftime('%Y-%m-%d %H:%M:%S')
+        return date_str
+
+    def file_path(self, interval, start_date, end_date=None, process=False, raw=False, rescaled=False, file_type='csv'):
+        
+        if end_date is None:
+            end_date = datetime.now(pytz.UTC).strftime('%Y-%m-%d')
+        if raw:
+            return f'data/historical/for_train/raw/{self.symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+        if rescaled:
+            return f'data/historical/for_train/rescaled/{self.symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+        if process:
+            return f'data/historical/for_train/processed/{self.symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+        else:
+            print("Please specify the type of data to save.")

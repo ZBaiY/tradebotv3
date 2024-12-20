@@ -51,8 +51,7 @@ class SingleAssetBacktester:
         # print(self.data_handler.get_data().head())
         self.data_handler_copy = self.data_handler.copy()
         self.feature_handler = feature_handler if feature_handler else SingleSymbolFeatureExtractor(self.symbol, self.data_handler_copy)
-        self.realtime_settings = json.load(open('config/fetch_real_time.json'))
-        self.window_size = self.realtime_settings['memory_setting']['window_size']
+        self.window_size = self.data_handler.window_size
         self.strategy = strategy
         self.model_category = None
         self.model_variant = None
@@ -153,6 +152,8 @@ class SingleAssetBacktester:
             self.current_date = self.data_handler.cleaned_data.index[i]
             self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
             self.data_handler_copy.cleaned_data = self.data_handler_copy.cleaned_data.tail(self.window_size)
+            # To mimic the live trading environment, we only have the last data point
+            
             price = self.data_handler_copy.cleaned_data.iloc[-1]['close']
             self.recalculate_balance(price)  ### this redundancy is due to a design flaw in the risk manager
             self.equity_balance()
@@ -304,32 +305,35 @@ class MultiAssetBacktester:
                  order_manager: OrderManager = None,initial_capital: float = 100000.0):
         
         self.s_config = json.load(open('backtest/config/strategy.json'))
-        self.s_config = json.load(open('backtest/config/strategy.json'))
-        self.symbols = list(self.s_config.keys())
-        self.start_date = {symbol: self.s_config[symbol]['start_date'] for symbol in self.symbols}
-        self.end_date = {symbol: self.s_config[symbol]['end_date'] for symbol in self.symbols}
-        self.interval_str = {symbol: self.s_config[symbol]['interval'] for symbol in self.symbols}
-        self.window_size = self.data_handler.window_size
-
-
+        self.start_date = self.s_config['date_range']['start_date']      
+        self.end_date = self.s_config['date_range']['end_date']  
+        self.symbols = list(self.s_config.keys())[1:]
+        self.interval_str = self.s_config['date_range']['interval']
 
         self.data_handler = data_handler if data_handler else MultiSymbolDataHandler(self.symbols)
+        self.window_size = self.data_handler.window_size
         self.data_handler.set_dates(self.start_date, self.end_date)
         self.data_handler.load_data(interval_str=self.interval_str, begin_date=self.start_date, end_date=self.end_date)
 
         self.data_handler_copy = self.data_handler.copy()
-        self.feature_handler = feature_handler if feature_handler else FeatureExtractor(self.symbols, self.data_handler_copy)
+        self.feature_handler = feature_handler if feature_handler else FeatureExtractor(self.data_handler_copy)
         self.signal_processors = signal_processors
-        self.portfolio_manager = portfolio_manager if portfolio_manager else PortfolioManager(initial_capital)
-        self.risk_manager = risk_manager
-        self.order_manager = order_manager
-        self.strategy = strategy
 
         self.initial_capital = initial_capital
         self.total_equity = initial_capital
         self.balances_usdt = initial_capital
         self.balances_symbol = {symbol: 0.0 for symbol in self.symbols}
         self.quantity_symbols = {symbol: 0.0 for symbol in self.symbols}
+
+        #### portfolio manager, risk manager, order manager, strategy,
+        #### they need to be initialized after the datahandler and feature handlers
+
+        self.portfolio_manager = portfolio_manager
+        self.assigned_percentage = {}
+        self.risk_manager = risk_manager
+        self.order_manager = order_manager
+        self.strategy = strategy
+
         self.equity_history = []
         self.balance_history = {symbol: [] for symbol in self.symbols}
         self.trade_logs = {symbol: [] for symbol in self.symbols}
@@ -352,22 +356,23 @@ class MultiAssetBacktester:
         Initialize the backtester by setting up equity, balances, and tools.
         """
         self.equity_balance()
-        self.initialize_PortfolioManager(self.total_equity, self.quantity_symbols, self.symbols, self.data_handler_copy)
+        self.initialize_PortfolioManager()
         self.initialize_Strategy(self.total_equity, self.quantity_symbols, self.data_handler_copy)
         self.set_entry_prices()
 
-    def initialize_PortfolioManager(self, equity, quantities, symbols, data_handler):
+    def initialize_PortfolioManager(self):
         """
         Initialize the portfolio manager.
         """
-        self.PortfolioManager = PortfolioManager(equity, quantities, symbols, data_handler)
+        self.PortfolioManager = PortfolioManager(self.total_equity, self.balances_symbol, self.total_equity ,self.symbols)
+        self.assigned_percentage = self.PortfolioManager.assigned_percentage
 
 
     def initialize_Strategy(self, equity, quantities, data_handler):
         """
         Initialize the multi-asset strategy.
         """
-        s_config = json.load(open('config/strategy.json', 'r'))
+        s_config = json.load(open('backtest/config/strategy.json', 'r'))
         m_config, r_config, d_config = {}, {}, {}
 
         for symbol in self.symbols:
@@ -375,7 +380,7 @@ class MultiAssetBacktester:
             r_config[symbol] = s_config[symbol]['risk_manager']
             d_config[symbol] = s_config[symbol]['decision_maker']
 
-        self.RiskManager = RiskManager(equity, quantities, s_config, data_handler, self.signal_processors, self.feature_handler)
+        self.RiskManager = RiskManager(self.total_equity, self.balances_symbol, self.total_equity, self.assigned_percentage, r_config, self.data_handler_copy, self.signal_processors, self.feature_handler)
         self.RiskManager.initialize_singles()
         self.RiskManager.calculate_position()
 
