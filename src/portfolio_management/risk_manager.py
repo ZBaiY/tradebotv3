@@ -37,7 +37,7 @@ class RiskManager:
         self.feature_handler = feature_handler
         self.stop_loss_threshold = None
         self.take_profit_threshold = None
-        self.entry_price = {symbol: 0 for symbol in self.symbols}        
+        self.entry_price = {symbol: -1 for symbol in self.symbols}        
         self.config = config
         self.risk_managers = {}
 

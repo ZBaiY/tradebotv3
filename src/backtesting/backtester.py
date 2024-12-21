@@ -67,6 +67,7 @@ class SingleAssetBacktester:
         self.trade_log = []
         self.equity_history = []
         self.balance_history = []
+        self.entry_price = -1 # initialize entry price to -1
         self.asset_quantity = 0
 
 
@@ -337,7 +338,7 @@ class MultiAssetBacktester:
         self.equity_history = []
         self.balance_history = {symbol: [] for symbol in self.symbols}
         self.trade_logs = {symbol: [] for symbol in self.symbols}
-        self.entry_prices = {symbol: 0.0 for symbol in self.symbols}
+        self.entry_prices = {symbol: -1 for symbol in self.symbols}
 
     def equity_balance(self):
         """
@@ -345,7 +346,7 @@ class MultiAssetBacktester:
         """
         total_equity = self.balances_usdt  # Start with the USDT balance
         for symbol in self.symbols:
-            price = self.data_handler.get_symbol_last_data(symbol)['close']
+            price = self.data_handler.get_last_data(symbol)['close']
             self.balances_symbol[symbol] = self.quantity_symbols[symbol] * price
             total_equity += self.balances_symbol[symbol]
         self.total_equity = total_equity
@@ -355,10 +356,17 @@ class MultiAssetBacktester:
         """
         Initialize the backtester by setting up equity, balances, and tools.
         """
+        self.read_quantities()
         self.equity_balance()
         self.initialize_PortfolioManager()
-        self.initialize_Strategy(self.total_equity, self.quantity_symbols, self.data_handler_copy)
+        self.assigned_percentage = self.PortfolioManager.assigned_percentage
+        self.initialize_Strategy(self.quantity_symbols, self.data_handler_copy)
         self.set_entry_prices()
+
+    def read_quantities(self):
+        # read the existing qunatities in the account
+        # Not needed for backtest
+        pass
 
     def initialize_PortfolioManager(self):
         """
@@ -368,7 +376,7 @@ class MultiAssetBacktester:
         self.assigned_percentage = self.PortfolioManager.assigned_percentage
 
 
-    def initialize_Strategy(self, equity, quantities, data_handler):
+    def initialize_Strategy(self, quantities, data_handler):
         """
         Initialize the multi-asset strategy.
         """
@@ -384,75 +392,113 @@ class MultiAssetBacktester:
         self.RiskManager.initialize_singles()
         self.RiskManager.calculate_position()
 
-        self.Strategy = MultiAssetStrategy(equity, quantities, data_handler, self.RiskManager, m_config, d_config,
+        self.Strategy = MultiAssetStrategy(self.total_equity, quantities, self.balances_symbol, self.total_equity, data_handler, self.RiskManager, m_config, d_config,
                                         self.feature_handler, self.signal_processors)
         self.Strategy.initialize_singles()
 
     def set_entry_prices(self):
-        """
-        Set entry prices for each symbol.
-        """
+        self.cal_entry_prices()
         for symbol in self.symbols:
-            self.entry_prices[symbol] = self.entry_price(symbol)
+            self.entry_prices[symbol] = self.entry_prices[symbol]
         self.RiskManager.set_entry_price(self.entry_prices)
-    def entry_price(self, symbol):
-        """
-        Calculate the weighted average entry price for a current open position of a specific symbol.
-        :param symbol: The symbol to calculate the entry price for (e.g., 'BTCUSDT').
-        :return: The weighted average entry price or 0 if no open position.
-        """
-        total_bought_qty = 0.0
-        total_cost = 0.0
-        remaining_qty = 0.0
-
-        # Iterate through the trade log for the given symbol
-        for trade in self.trade_logs[symbol]:
-            trade_qty = trade["amount"]
-            trade_price = trade["price"]
-            trade_type = trade["type"]  # 'buy' or 'sell'
-
-            if trade_type == "buy":
-                total_cost += trade_qty * trade_price
-                total_bought_qty += trade_qty
-                remaining_qty += trade_qty
-            elif trade_type == "sell":
-                remaining_qty -= trade_qty
-                # If more quantity is sold than was bought, reset total cost and quantities
-                if remaining_qty < 0:
-                    remaining_qty = 0
-                    total_cost = 0
-                    total_bought_qty = 0
-
-        # Calculate the weighted average entry price based on remaining open position
-        if remaining_qty > 0:
-            weighted_entry_price = total_cost / total_bought_qty
-            return weighted_entry_price
-        else:
-            return 0.0
         
-
-    def run_backtest(self, start_date: str, end_date: str):
+    def cal_entry_prices(self):
         """
-        Run the backtest for all symbols within the specified date range.
+        Calculates and sets the weighted average entry prices for all symbols.
+        Updates self.entry_price as a dictionary {symbol: price}.
         """
-        print(f"Starting backtest from {start_date} to {end_date}.")
-        self.data_handler.load_data(begin_date=start_date, end_date=end_date)
-        self.run_initialization()
+        if not self.trade_logs:
+            pass
 
-        for current_date in self.data_handler.symbol_handlers[self.symbols[0]].get_data_range(0, -1).index:
+        for symbol, trades in self.trade_logs.items():
+            total_cost = 0.0
+            total_quantity = 0.0
+
+            # Process the trade log for the symbol anti-chronologically
+            for trade in reversed(trades):
+                trade_qty = trade["quantity"]
+                trade_price = trade["price"]
+                trade_type = trade["order"]  # 'buy' or 'sell'
+
+                if trade_type == "buy":
+                    total_cost += trade_qty * trade_price
+                    total_quantity += trade_qty
+                elif trade_type == "sell":
+                    total_quantity -= trade_qty
+                    # If position is fully closed, terminate early
+                    if total_quantity <= 0:
+                        total_quantity = 0
+                        total_cost = 0
+                        break
+
+            self.entry_prices[symbol] = total_cost / total_quantity if total_quantity > 0 else 0.0
+
+
+    def run_backtest(self):
+        """
+        Runs the backtest for all symbols over the specified date range.
+        """
+        print(f"Initializing multi-asset backtest from {self.start_date} to {self.end_date}...")
+
+        # Load and prepare data
+        self.data_handler.load_data(interval_str=self.interval_str, begin_date=self.start_date, end_date=self.end_date)
+        # Initialize equity and balances
+        self.equity_balance()
+        self.equity_history.append(self.total_equity)
+        for symbol in self.symbols:
+            self.balance_history[symbol].append(self.balances_symbol[symbol])
+        # Prepare indicators
+        self.feature_handler.pre_run_indicators()
+        i = 100
+        backtest_len = len(self.data_handler.cleaned_data)-i
+        start_date = self.data_handler.cleaned_data.index[0]
+        end_date = self.data_handler.cleaned_data.index[-1]
+        start_index = max(0, i - self.window_size)
+        self.current_date = self.data_handler.cleaned_data.index[i]
+        self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
+        self.feature_handler.pre_run_indicators()
+
+        # Iterate through the data for each symbol
+        for i in tqdm(range(self.window_size, len(self.data_handler.get_data()[self.symbols[0]]) - 1)):
+            self.current_date = self.data_handler.get_data()[self.symbols[0]].index[i]
+
             for symbol in self.symbols:
-                self.data_handler.get_symbol_data(symbol)
-                market_orders = self.Strategy.run_strategy_market()
-                for symbol, order in market_orders.items():
-                    if order["signal"] == "hold":
-                        continue
-                    self.execute_order(symbol, order)
+                # Update data for the current window
+                self.data_handler_copy.cleaned_data[symbol] = self.data_handler.get_symbol_data_range(
+                    symbol, start_index=i - self.window_size, end_index=i
+                )
 
-            self.equity_balance()  # Update equity and balances dynamically
-            self.log_state(current_date)
+                # Process the latest data point for the symbol
+                latest_data = self.data_handler_copy.cleaned_data[symbol].iloc[-1]
+                self.feature_handler.update(latest_data)
 
-        print("Backtest completed. Calculating performance.")
-        return self.evaluate_performance()
+                # Run strategy for the current symbol
+                market_order = self.strategy.run_strategy_market(symbol)
+                market_order['price'] = latest_data['close']
+
+                # Handle 'hold' signal
+                if market_order['signal'] == 'hold':
+                    continue
+
+                # Execute orders for the symbol
+                self.execute_order(symbol, market_order)
+
+                # Update balances and equity after the order
+                self.equity_balance()
+
+                # Log the trade
+                self.log_state(self.current_date)
+
+        print("Multi-asset backtest completed. Evaluating performance...")
+
+        # Evaluate performance metrics
+        self.performance_metrics = self.evaluate_performance()
+
+        # Save performance metrics
+        self.save_metrics()
+
+        print("Backtest results saved.")
+
 
     def execute_order(self, symbol, order):
         """

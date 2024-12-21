@@ -363,7 +363,7 @@ class TakeProfit:
         risk_reward_ratio = kwargs.get("risk_reward_ratio", 2)
         entry_price = kwargs.get("entry_price", None)
         stop_loss_price = kwargs.get("stop_loss_price", None)
-        if entry_price==-1 or stop_loss_price is None:
+        if entry_price <= 1e-6  or stop_loss_price is None:
             return 999999999. # No position, so no take profit
         
         risk_amount = entry_price - stop_loss_price

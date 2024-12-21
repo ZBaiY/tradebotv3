@@ -622,6 +622,8 @@ class MultiSymbolDataHandler:
         # for multi-symbol operations, pack everything into a dictionary
         # There are lots of modules to symphony
         self.subscribers = []
+        self.begin_date = None
+        self.end_date = None
 
     def set_dates(self, start_date, end_date):
         self.start_date = start_date
@@ -640,132 +642,8 @@ class MultiSymbolDataHandler:
             file_path = f'{base_path}{symbol}_{begin_date}_{end_date}_{interval_str}.csv'
             self.cleaned_data[symbol] = pd.read_csv(file_path, index_col='open_time')
 
-    def get_symbol_data(self, symbol, clean=True, rescale=False):
-        """
-        Fetches data for a specific symbol.
-        :param symbol: Trading symbol (e.g., 'BTCUSD').
-        :param clean: Whether to return cleaned data.
-        :param rescale: Whether to rescale data.
-        :return: DataFrame containing the data.
-        """
-        if symbol in self.symbol_handlers:
-            return self.symbol_handlers[symbol].get_data(clean, rescale)
-        raise ValueError(f"Symbol {symbol} not managed by this handler.")
 
-    def get_symbol_last_data(self, symbol, clean=True, rescale=False):
-        """
-        Fetches the last data point for a specific symbol.
-        :param symbol: Trading symbol (e.g., 'BTCUSD').
-        :param clean: Whether to return cleaned data.
-        :param rescale: Whether to rescale data.
-        :return: Last data point as a Series or row.
-        """
-        if symbol in self.symbol_handlers:
-            return self.symbol_handlers[symbol].get_last_data(clean, rescale)
-        raise ValueError(f"Symbol {symbol} not managed by this handler.")
-    
-    def get_symbol_data_limit(self, symbol, limit, clean=True, rescale=False):
-        """
-        Fetches the last N rows of data for a specific symbol.
-        :param symbol: Trading symbol (e.g., 'BTCUSD').
-        :param limit: Number of rows to fetch.
-        :param clean: Whether to return cleaned data.
-        :param rescale: Whether to rescale data.
-        :return: DataFrame containing the last N rows.
-        """
-        if symbol in self.symbol_handlers:
-            return self.symbol_handlers[symbol].get_data_limit(limit, clean, rescale)
-        raise ValueError(f"Symbol {symbol} not managed by this handler.")
 
-    def get_symbol_data_range(self, symbol, start_index, end_index, clean=True, rescale=False):
-        """
-        Fetches a range of data for a specific symbol.
-        :param symbol: Trading symbol (e.g., 'BTCUSD').
-        :param start_index: Starting index for the range.
-        :param end_index: Ending index for the range.
-        :param clean: Whether to return cleaned data.
-        :param rescale: Whether to rescale data.
-        :return: DataFrame containing the range of data.
-        """
-        if symbol in self.symbol_handlers:
-            return self.symbol_handlers[symbol].get_data_range(start_index, end_index, clean, rescale)
-        raise ValueError(f"Symbol {symbol} not managed by this handler.")
-
-    def get_data(self, clean=True, rescale=False):
-        """
-        Fetches data for all symbols.
-        :param clean: Whether to return cleaned data.
-        :param rescale: Whether to rescale data.
-        :return: Dictionary of dataframes keyed by symbol.
-        """
-        all_data = {}
-        for symbol, handler in self.symbol_handlers.items():
-            all_data[symbol] = handler.get_data(clean, rescale)
-        return all_data
-
-    def get_last_data(self, clean=True, rescale=False):
-        """
-        Fetches the last data point for all symbols.
-        :param clean: Whether to return cleaned data.
-        :param rescale: Whether to rescale data.
-        :return: Dictionary of the last data points keyed by symbol.
-        """
-        all_last_data = {}
-        for symbol, handler in self.symbol_handlers.items():
-            all_last_data[symbol] = handler.get_last_data(clean, rescale)
-        return all_last_data
-
-    def get_data_limit(self, limit, clean=True, rescale=False):
-        """
-        Fetches the last N rows of data for all symbols.
-        :param limit: Number of rows to fetch for each symbol.
-        :param clean: Whether to return cleaned data.
-        :param rescale: Whether to rescale data.
-        :return: Dictionary of dataframes with the last N rows keyed by symbol.
-        """
-        all_data_limit = {}
-        for symbol, handler in self.symbol_handlers.items():
-            all_data_limit[symbol] = handler.get_data_limit(limit, clean, rescale)
-        return all_data_limit
-
-    def get_data_range(self, start_index, end_index, clean=True, rescale=False):
-        """
-        Fetches a range of data for all symbols.
-        :param start_index: Starting index for the range.
-        :param end_index: Ending index for the range.
-        :param clean: Whether to return cleaned data.
-        :param rescale: Whether to rescale data.
-        :return: Dictionary of dataframes for the range keyed by symbol.
-        """
-        all_data_range = {}
-        for symbol, handler in self.symbol_handlers.items():
-            all_data_range[symbol] = handler.get_data_range(start_index, end_index, clean, rescale)
-        return all_data_range
-
-    def add_symbol(self, symbol, json_file=None, cleaner_file=None, checker_file=None):
-        """
-        Adds a new symbol to the handler.
-        :param symbol: Trading symbol to add.
-        :param json_file: Optional JSON file with symbol-specific configuration.
-        :param cleaner_file: Optional JSON file with data cleaning parameters.
-        :param checker_file: Optional JSON file with data check parameters.
-        """
-        if symbol not in self.symbol_handlers:
-            self.symbol_handlers[symbol] = SingleSymbolDataHandler(
-                symbol, self.source_file, json_file, cleaner_file, checker_file
-            )
-        else:
-            print(f"Symbol {symbol} is already managed.")
-
-    def remove_symbol(self, symbol):
-        """
-        Removes a symbol from the handler.
-        :param symbol: Trading symbol to remove.
-        """
-        if symbol in self.symbol_handlers:
-            del self.symbol_handlers[symbol]
-        else:
-            print(f"Symbol {symbol} is not managed by this handler.")
 
     def copy(self):
         copied = MultiSymbolDataHandler(self.symbols, self.source_file)
@@ -773,13 +651,36 @@ class MultiSymbolDataHandler:
         return copied
     
     def subscribe(self, subscriber):
-        self.subscribers.append(subscriber)
-    
-    def notify_subscribers(self):
-        # Notify all subscribers
-        # Make sure the order: feature, signal processor -> 
+        """Add a new subscriber to the list."""
+        if subscriber not in self.subscribers:
+            self.subscribers.append(subscriber)
+    def unsubscribe(self, subscriber):
+        """Remove a subscriber from the list."""
+        if subscriber in self.subscribers:
+            self.subscribers.remove(subscriber)
+
+    def notify_subscribers(self, new_data):
         for subscriber in self.subscribers:
-            subscriber.update(self)
+            subscriber.update(new_data)
+
+    def get_data(self, symbol, clean=True, rescale=False):
+        if clean:
+            return self.cleaned_data[symbol]
+        """if rescale:
+            return self.rescaled_data[symbol]"""
+        
+    def get_last_data(self, symbol, clean=True, rescale=False):
+        if clean:
+            return self.cleaned_data[symbol].iloc[-1]
+        """if rescale:
+            return self.rescaled_data[symbol].iloc[-1]"""
+        
+    def get_data_limit(self, symbol, limit, clean=True, rescale=False):
+        if clean:
+            return self.cleaned_data[symbol].tail(limit)
+        """if rescale:
+            return self.rescaled_data[symbol].tail(limit)"""
+        
 
 
 
