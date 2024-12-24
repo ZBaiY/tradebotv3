@@ -225,7 +225,7 @@ class MultiSymbolStrategyEvaluator:
         }
 
     def get_roi(self):
-        net_profit = self.equity_history[-1] - self.initial_balance
+        net_profit = self.equity_history[-1] - self.equity_history[0]
         return (net_profit / self.initial_balance) * 100
 
     def max_drawdown_percentage(self):

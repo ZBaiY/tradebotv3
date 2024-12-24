@@ -245,18 +245,29 @@ class SingleAssetBacktester:
         order = market_decision['signal']
         price = market_decision['price']
         quantity = market_decision['amount']
-        if abs(quantity) <= 1e-10:
+    
+        if abs(quantity) <= 1e-6:
             order = 'hold'
             quantity = 0
         if order == 'buy':
+            if quantity * price > self.equity-self.balance:
+                quantity = (self.equity-self.balance)/price
             quantity = abs(quantity)
         elif order == 'sell':
+            if quantity * price > self.balance:
+                quantity = self.balance/price
             quantity = -abs(quantity)
         # print('balance', self.balance, 'equity', self.equity, 'self quantity', self.asset_quantity, 'order quantity', quantity)
         # print('position size', self.risk_manager.position)
         self.calculate_eq_bal(price, quantity)
         self.equity_balance()
-        return {'symbol': self.symbol, 'date': self.current_date, 'price': price, 'quantity': quantity, 'order': order, 'balance': self.balance, 'equity': self.equity}, {'symbol': self.symbol, 'date': self.current_date, 'price': price,'order': order}
+        return {'symbol': self.symbol, 
+                'date': self.current_date, 
+                'price': price, 
+                'quantity': quantity, 
+                'order': order, 
+                'balance': self.balance, 
+                'equity': self.equity}, {'symbol': self.symbol, 'date': self.current_date, 'price': price,'order': order}
 
 
     def evaluate_performance_model(self):
@@ -340,17 +351,26 @@ class MultiAssetBacktester:
         self.trade_logs = {symbol: [] for symbol in self.symbols}
         self.entry_prices = {symbol: -1 for symbol in self.symbols}
 
-    def equity_balance(self):
+    def equity_balance(self, prices = None):
         """
         Calculate and update equity and balances dynamically based on quantities and prices.
         """
+        if not prices:
+            prices={symbol: 0 for symbol in self.symbols}
         total_equity = self.balances_usdt  # Start with the USDT balance
         for symbol in self.symbols:
-            price = self.data_handler.get_last_data(symbol)['close']
+            price = prices[symbol]
             self.balances_symbol[symbol] = self.quantity_symbols[symbol] * price
             total_equity += self.balances_symbol[symbol]
         self.total_equity = total_equity
+        if self.risk_manager: self.risk_manager.update_equity_balance(self.total_equity, self.balances_symbol)
+        if self.strategy: self.strategy.update_equity_balance(self.total_equity, self.balances_symbol)
         return total_equity
+    
+    def update_assigned_percentage(self):
+        self.assigned_percentage = self.portfolio_manager.get_assigned_percentage()
+        self.risk_manager.update_assigned_percentage(self.assigned_percentage)
+        self.strategy.update_assigned_percentage(self.assigned_percentage)
 
     def run_initialization(self):
         """
@@ -359,7 +379,7 @@ class MultiAssetBacktester:
         self.read_quantities()
         self.equity_balance()
         self.initialize_PortfolioManager()
-        self.assigned_percentage = self.PortfolioManager.assigned_percentage
+        self.assigned_percentage = self.portfolio_manager.assigned_percentage
         self.initialize_Strategy(self.quantity_symbols, self.data_handler_copy)
         self.set_entry_prices()
 
@@ -372,8 +392,8 @@ class MultiAssetBacktester:
         """
         Initialize the portfolio manager.
         """
-        self.PortfolioManager = PortfolioManager(self.total_equity, self.balances_symbol, self.total_equity ,self.symbols)
-        self.assigned_percentage = self.PortfolioManager.assigned_percentage
+        self.portfolio_manager = PortfolioManager(self.total_equity, self.balances_symbol, self.total_equity ,self.symbols, self.data_handler_copy)
+        self.assigned_percentage = self.portfolio_manager.assigned_percentage
 
 
     def initialize_Strategy(self, quantities, data_handler):
@@ -388,19 +408,19 @@ class MultiAssetBacktester:
             r_config[symbol] = s_config[symbol]['risk_manager']
             d_config[symbol] = s_config[symbol]['decision_maker']
 
-        self.RiskManager = RiskManager(self.total_equity, self.balances_symbol, self.total_equity, self.assigned_percentage, r_config, self.data_handler_copy, self.signal_processors, self.feature_handler)
-        self.RiskManager.initialize_singles()
-        self.RiskManager.calculate_position()
+        self.risk_manager = RiskManager(self.total_equity, self.balances_symbol, self.total_equity, self.assigned_percentage, r_config, self.data_handler_copy, self.signal_processors, self.feature_handler)
+        self.risk_manager.initialize_singles()
+        self.risk_manager.calculate_position()
 
-        self.Strategy = MultiAssetStrategy(self.total_equity, quantities, self.balances_symbol, self.total_equity, data_handler, self.RiskManager, m_config, d_config,
+        self.strategy = MultiAssetStrategy(self.total_equity, quantities, self.balances_symbol, self.total_equity, data_handler, self.risk_manager, m_config, d_config,
                                         self.feature_handler, self.signal_processors)
-        self.Strategy.initialize_singles()
+        self.strategy.initialize_singles()
 
     def set_entry_prices(self):
         self.cal_entry_prices()
         for symbol in self.symbols:
             self.entry_prices[symbol] = self.entry_prices[symbol]
-        self.RiskManager.set_entry_price(self.entry_prices)
+        self.risk_manager.set_entry_price(self.entry_prices)
         
     def cal_entry_prices(self):
         """
@@ -443,6 +463,8 @@ class MultiAssetBacktester:
         # Load and prepare data
         self.data_handler.load_data(interval_str=self.interval_str, begin_date=self.start_date, end_date=self.end_date)
         # Initialize equity and balances
+        for symbol in self.symbols:
+            self.data_handler.cleaned_data[symbol] = self.data_handler.cleaned_data[symbol].tail(3000)
         self.equity_balance()
         self.equity_history.append(self.total_equity)
         for symbol in self.symbols:
@@ -450,44 +472,50 @@ class MultiAssetBacktester:
         # Prepare indicators
         self.feature_handler.pre_run_indicators()
         i = 100
-        backtest_len = len(self.data_handler.cleaned_data)-i
-        start_date = self.data_handler.cleaned_data.index[0]
-        end_date = self.data_handler.cleaned_data.index[-1]
+        backtest_len = len(self.data_handler.cleaned_data[self.symbols[0]])-i
+        
+        start_date = self.data_handler.cleaned_data[self.symbols[0]].index[0]
+        end_date = self.data_handler.cleaned_data[self.symbols[0]].index[-1]
+        print(f"Starting backtest from {start_date} to {end_date}.")
+
         start_index = max(0, i - self.window_size)
-        self.current_date = self.data_handler.cleaned_data.index[i]
-        self.data_handler_copy.cleaned_data = self.data_handler.get_data_range(start_index, i)
+        self.current_date = self.data_handler.cleaned_data[self.symbols[0]].index[i]
+        for symbol in self.symbols:
+            self.data_handler_copy.cleaned_data[symbol] = self.data_handler.get_data_range(
+                symbol, start_index=start_index, end_index=i
+            )
         self.feature_handler.pre_run_indicators()
 
         # Iterate through the data for each symbol
-        for i in tqdm(range(self.window_size, len(self.data_handler.get_data()[self.symbols[0]]) - 1)):
-            self.current_date = self.data_handler.get_data()[self.symbols[0]].index[i]
-
+        for i in tqdm(range(self.window_size, len(self.data_handler.cleaned_data[self.symbols[0]]) - 1)):
+            self.current_date = self.data_handler.get_data(self.symbols[0]).index[i]
+            latest_data = {}
+            latest_prices = {}
             for symbol in self.symbols:
                 # Update data for the current window
-                self.data_handler_copy.cleaned_data[symbol] = self.data_handler.get_symbol_data_range(
+                self.data_handler_copy.cleaned_data[symbol] = self.data_handler.get_data_range(
                     symbol, start_index=i - self.window_size, end_index=i
                 )
+                latest_data[symbol] = self.data_handler_copy.cleaned_data[symbol].iloc[-1]
+                latest_prices[symbol] = latest_data[symbol]['close']
+            self.equity_balance(latest_prices)
+            self.data_handler_copy.notify_subscribers(latest_data)
+            self.update_assigned_percentage()
 
-                # Process the latest data point for the symbol
-                latest_data = self.data_handler_copy.cleaned_data[symbol].iloc[-1]
-                self.feature_handler.update(latest_data)
-
-                # Run strategy for the current symbol
-                market_order = self.strategy.run_strategy_market(symbol)
-                market_order['price'] = latest_data['close']
-
-                # Handle 'hold' signal
-                if market_order['signal'] == 'hold':
+            market_order = self.strategy.run_strategy_market()
+            for symbol in self.symbols:
+                market_order[symbol]['price'] = latest_data[symbol]['close']
+                if market_order[symbol]['signal'] == 'hold':
+                    self.balance_history[symbol].append(self.balances_symbol[symbol])
                     continue
+            # Execute orders for the symbol
+                trade_log = self.execute_order(symbol, market_order[symbol])
+                self.trade_logs[symbol].append(trade_log)
+                self.balance_history[symbol].append(self.balances_symbol[symbol])
 
-                # Execute orders for the symbol
-                self.execute_order(symbol, market_order)
-
-                # Update balances and equity after the order
-                self.equity_balance()
-
-                # Log the trade
-                self.log_state(self.current_date)
+            self.equity_history.append(self.total_equity)
+            
+            # self.log_state(self.current_date)
 
         print("Multi-asset backtest completed. Evaluating performance...")
 
@@ -504,28 +532,29 @@ class MultiAssetBacktester:
         """
         Execute buy/sell orders for a given symbol.
         """
-        order_type = order["signal"]
-        amount = order["amount"]
-        price = self.data_handler.get_symbol_last_data(symbol)['close']
+        order_type = order['signal']
+        amount = order['amount']
+        price = order['price']
 
         if order_type == "buy":
             cost = amount * price
             if self.balances_usdt >= cost:
                 self.balances_usdt -= cost
                 self.quantity_symbols[symbol] += amount
+                self.balances_symbol[symbol] = self.quantity_symbols[symbol] * price
         elif order_type == "sell":
             if self.quantity_symbols[symbol] >= amount:
                 self.balances_usdt += amount * price
                 self.quantity_symbols[symbol] -= amount
-
-        trade_log = {
+                self.balances_symbol[symbol] = self.quantity_symbols[symbol] * price
+        
+        return {
             "symbol": symbol,
-            "type": order_type,
-            "amount": amount,
+            "order": order_type,
+            "quantity": amount,
             "price": price,
-            "date": self.data_handler.get_symbol_last_data(symbol).name
-        }
-        self.trade_logs[symbol].append(trade_log)
+            "date": self.data_handler.get_last_data(symbol).name,
+            "balance": self.balances_symbol[symbol]}
 
     def calculate_entry_price(self, symbol):
 
@@ -557,6 +586,7 @@ class MultiAssetBacktester:
 
 
     def log_state(self, current_date):
+        # for future development usage
         """
         Log the current state of equity, balances, and quantities.
         """
@@ -579,8 +609,9 @@ class MultiAssetBacktester:
         evaluator = MultiSymbolStrategyEvaluator(
             trade_logs=self.trade_logs,
             equity_history=self.equity_history,
-            asset_balance_history={symbol: self.balance_history[symbol] for symbol in self.symbols},
+            asset_balance_history=self.balance_history,
             initial_balance=self.initial_capital,
+            interval_str=self.interval_str
         )
 
         # Calculate comprehensive performance metrics
@@ -598,7 +629,7 @@ class MultiAssetBacktester:
         # Save overall performance metrics
         overall_path = os.path.join(output_path, "overall_performance.json")
         with open(overall_path, "w") as overall_file:
-            json.dump(performance, overall_file)
+            json.dump(performance, overall_file, indent=4)
         print(f"Saved overall performance metrics to {overall_path}.")
 
         # Save individual symbol performance metrics
@@ -606,7 +637,7 @@ class MultiAssetBacktester:
             file_name = f"{symbol}_performance.json"
             file_path = os.path.join(output_path, file_name)
             with open(file_path, "w") as file:
-                json.dump({"ROI (%)": metrics}, file)
+                json.dump({"ROI (%)": metrics}, file, indent=4)
             print(f"Saved performance metrics for {symbol} to {file_path}.")
 
     
@@ -621,7 +652,7 @@ if __name__ == "__main__":
 
 
     backtester = MultiAssetBacktester(
-        strategy=strategy,
+        Strategy=strategy,
         data_handler=data_handler,
         portfolio_manager=portfolio_manager,
         risk_manager=risk_manager,

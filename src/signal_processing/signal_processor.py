@@ -323,8 +323,8 @@ class NonMemSymbolProcessor:
     def apply_filters(self, processed_data):
         for filter_instance in self.filters:
             recent_timestamps = self.data_handler.cleaned_data[self.symbol].tail(self.window_size).index
-            processed_data[self.symbol] = filter_instance.apply(processed_data[self.symbol])
-            processed_data[self.symbol] = processed_data[self.symbol].reindex(recent_timestamps)
+            processed_data = filter_instance.apply(processed_data)
+            processed_data = processed_data.reindex(recent_timestamps)
         return processed_data
     
     def apply_transform(self, processed_data):
@@ -336,20 +336,20 @@ class NonMemSymbolProcessor:
                 recent_timestamps = self.data_handler.cleaned_data[self.symbol].tail(self.window_size).index
                 if isinstance(trans_instance, ScalerSymbolTransformer):
                     if not trans_instance.load:
-                        trans_instance.fit_scaler(self.symbol, processed_data[self.symbol])
-                    processed_data[self.symbol] = trans_instance.transform(self.symbol, processed_data[self.symbol])
-                    processed_data[self.symbol] = processed_data[self.symbol].reindex(recent_timestamps)
+                        trans_instance.fit_scaler(self.symbol, processed_data)
+                    processed_data = trans_instance.transform(self.symbol, processed_data)
+                    processed_data = processed_data.reindex(recent_timestamps)
                     continue
-                processed_data[self.symbol] = trans_instance.transform(processed_data[self.symbol])
-                processed_data[self.symbol] = processed_data[self.symbol].reindex(recent_timestamps)
+                processed_data = trans_instance.transform(processed_data)
+                processed_data = processed_data.reindex(recent_timestamps)
             else:
-                processed_data[self.symbol] = trans_instance.transform(processed_data[self.symbol])
+                processed_data = trans_instance.transform(processed_data)
                 k_space = True
         return processed_data
     
     def apply_all(self):
         """First filter the data, then apply transformations."""
-        processed_data = self.data_handler.cleaned_data[self.symbol][self.column].copy()        
+        processed_data = self.data_handler.cleaned_data[self.symbol][self.column].copy()
         processed_data = self.apply_filters(processed_data)
         processed_data = self.apply_transform(processed_data)
         return processed_data
@@ -387,7 +387,7 @@ class MemSymbolProcessor:
         self.column = column
         self.lookback = 1
         self.k_space = False
-        self.processed_data = self.data_handler.cleaned_data[self.column].copy()
+        self.processed_data = self.data_handler.cleaned_data[symbol][self.column].copy()
 
         self.na_num = 0
         for filter_instance in self.filters:

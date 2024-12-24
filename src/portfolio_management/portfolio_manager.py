@@ -8,7 +8,7 @@ import json
 # portfolio_manager.py
 
 class PortfolioManager:
-    def __init__(self, equity, balances, allocation_cryp, symbols, path='config/portfolio.json'):
+    def __init__(self, equity, balances, allocation_cryp, symbols, data_handler, path='config/portfolio.json'):
         """
         Parameters:
             allocated_capital (float): The total capital allocated to crypto investments.
@@ -24,14 +24,22 @@ class PortfolioManager:
         self.method = self.config['method']
         self.params = self.config['params']
         self.assigned_percentage = {}
+        self.data_handler = data_handler
+        self.data_handler.subscribe(self)
         self.pre_run()
-    
+
     def pre_run(self):
         if self.method == 'equal_weight':
             self.equal_weight()
         else:
             raise ValueError("Invalid method specified in the portfolio configuration file.")
     
+    def update(self, data):
+        if self.method == 'equal_weight':
+            self.equal_weight()
+        else: 
+            pass
+        
 
 
     def set_equity(self, equity):

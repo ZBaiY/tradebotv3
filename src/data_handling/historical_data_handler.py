@@ -648,6 +648,7 @@ class MultiSymbolDataHandler:
     def copy(self):
         copied = MultiSymbolDataHandler(self.symbols, self.source_file)
         copied.cleaned_data = self.cleaned_data.copy()
+        copied.subscribers = self.subscribers.copy()
         return copied
     
     def subscribe(self, subscriber):
@@ -680,6 +681,11 @@ class MultiSymbolDataHandler:
             return self.cleaned_data[symbol].tail(limit)
         """if rescale:
             return self.rescaled_data[symbol].tail(limit)"""
+    def get_data_range(self, symbol, start_index, end_index, clean=True, rescale=False):
+        if clean:
+            return self.cleaned_data[symbol].iloc[start_index:end_index]
+        """if rescale:
+            return self.rescaled_data[symbol].iloc[start_index:end_index]"""
         
 
 

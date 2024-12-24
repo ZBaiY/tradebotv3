@@ -23,6 +23,7 @@ class SingleRiskManager:
         self.balance = balance # initially set to -1, to debug if it is set
         self.assigned_percentage = assigned_percentage or 1.0
         self.entry_price = -1  # initially no position
+        self.equity = equity
         self.position = balance / (equity * assigned_percentage)
         self.assigned_equity = equity
         self.symbol = symbol
@@ -60,8 +61,11 @@ class SingleRiskManager:
         self.balance = balance
     def set_assigned_percentage(self, assigned_percentage):
         self.assigned_percentage = assigned_percentage
+        self.assigned_equity = self.equity * assigned_percentage
+
     def set_equity(self, equity):
-        self.assigned_equity = equity
+        self.equity = equity
+        self.assigned_equity = self.equity * self.assigned_percentage
 
     def calculate_capital(self, buy=False, sell=False):
         if buy:

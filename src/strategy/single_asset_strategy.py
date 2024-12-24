@@ -43,6 +43,8 @@ class SingleAssetStrategy:
         self.assigned_equity = 0
 
         self.decision_model = d_config.get('method', None)
+        self.round = d_config.get('round', False)
+
         self.decision_params = d_config.get('params', {})
         self.decision_type = None
         self.decision_variant = None
@@ -88,6 +90,7 @@ class SingleAssetStrategy:
         self.risk_manager.calculate_stp()
 
 
+
     def make_decision_market(self):
         if self.decision_type == 'threshold':
             if isinstance(self.data_handler, SingleSymbolDataHandler):
@@ -103,19 +106,24 @@ class SingleAssetStrategy:
             capital = self.risk_manager.calculate_capital(buy=True)
             fraction = self.risk_manager.get_position_size()
             price = self.data_handler.get_last_data(self.symbol)['close']
-            self.decision['amount'] = fraction * capital/price
+            self.decision['amount'] = fraction * capital/price * 0.99999 # to avoid rounding error
+            if self.round:
+                self.decision['amount'] = min(round(self.decision['amount']),int(capital/price))
             # print(capital, fraction, price, self.decision['amount'])
             # input("sigle asset stra 106,Press Enter to continue...")
         elif decis == "sell":
             self.decision['signal'] = "sell"
             capital = self.risk_manager.calculate_capital(sell=True)
-            fraction = self.risk_manager.position_size
+            fraction = self.risk_manager.get_position_size()
             price = self.data_handler.get_last_data(self.symbol)['close']
-            self.decision['amount'] = fraction * capital/price
+            self.decision['amount'] = fraction * capital/price * 0.99999 # to avoid rounding error
+            if self.round:
+                self.decision['amount'] = min(round(self.decision['amount']),int(capital/price))
         else:
             self.decision['signal'] = "hold"
             self.decision['amount'] = 0
-            
+        
+        return self.decision
     
     def run_strategy_market(self):
         self.run_prediction()

@@ -292,6 +292,8 @@ class FeatureExtractor:
         new_datetime = new_data[self.symbols[0]].index
         for symbol in self.symbols:
             data_symbol = new_data[symbol]
+            if isinstance(data_symbol, pd.Series):
+                data_symbol = pd.DataFrame(data_symbol).T
             new_row = pd.DataFrame({col: 0 for col in self.indicators[symbol].columns}, index=new_datetime)
             self.indicators[symbol] = pd.concat([self.indicators[symbol], new_row])
             self.helpers[symbol] = pd.concat([self.helpers[symbol], new_row])
@@ -1270,12 +1272,12 @@ if __name__ == "__main__":
     is_running = True
     while is_running:
         new_data = data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
-        # print(new_data)
-        # input("Press Enter to continue...")
+        print(new_data)
+        input("Press Enter to continue...")
         now = datetime.now(timezone.utc)
         data_handler.notify_subscribers(new_data)
         next_fetch_time = data_handler.calculate_next_grid(now)
-        # print(ft_ext.indicators['BTCUSDT'].tail())
+        print(ft_ext.indicators['BTCUSDT'].tail())
         sleep_duration = (next_fetch_time - now).total_seconds()+1 # Add 1 second to avoid fetching data too early, total seconds rounds down
-        # print(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
+        print(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
         time.sleep(sleep_duration)

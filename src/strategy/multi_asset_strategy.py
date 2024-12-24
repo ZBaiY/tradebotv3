@@ -46,12 +46,19 @@ class MultiAssetStrategy(BaseStrategy):
         """
         for symbol in self.symbols:
             data = self.data_handler.cleaned_data
-            self.strategies[symbol].run_prediction(data[symbol]['close'])
+            self.strategies[symbol].run_prediction()
             self.signals[symbol] = self.strategies[symbol].make_decision_market()
         return self.signals
     
     def get_signals(self):
         return self.signals
+    
+    def update_equity_balance(self, equity, balances):
+        self.equity = equity
+        self.balances = balances
+        for symbol in self.symbols:
+            self.strategies[symbol].set_equity(equity)
+            self.strategies[symbol].set_balance(balances[symbol])
     
     def update_equity(self, equity):
         self.equity = equity

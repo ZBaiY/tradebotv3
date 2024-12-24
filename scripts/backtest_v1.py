@@ -12,6 +12,7 @@ from src.backtesting.backtester import SingleAssetBacktester, MultiAssetBacktest
 if __name__ == '__main__':
     backtester = MultiAssetBacktester()
     backtester.run_initialization()
+    backtester.run_backtest()
     
     """backtester.run_backtest()
     equity_history = backtester.equity_history

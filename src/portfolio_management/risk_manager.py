@@ -46,6 +46,13 @@ class RiskManager:
         for symbol in self.symbols:
             self.position[symbol] = self.balances[symbol] / (self.equity * self.assigned_percentage[symbol])
             self.risk_managers[symbol].set_position(self.position[symbol])
+    
+    def update_equity_balance(self, equity, balances):
+        self.equity = equity
+        self.balances = balances
+        self.update_equity(equity) 
+        self.update_balances(balances)
+        self.calculate_position()
 
     def set_equity(self, equity):
         self.equity = equity
