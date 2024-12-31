@@ -64,4 +64,8 @@ class CapitalAllocator:
             json.dump(self.config, file)
 
     def get_allocation_cryp(self):
-        return self.constant_allocation(1) 
+        self.constant_allocation(1) 
+        if self.capital_allocation_percentage == 1:
+            return self.equity
+        else:
+            return self.calculate_allocated_capital()

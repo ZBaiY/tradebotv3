@@ -23,12 +23,12 @@ from mock_trading.mock_order_manager import MockOrderManager
 
 
 class MockRealtimeDealer:
-    def __init__(self, datahandler=None, feature_module=None, signal_processors=None, log_dir='/mock/logs', log_file='mock_real_time_dealer.log'):
+    def __init__(self, datahandler=None, feature_module=None, signal_processors=None, log_dir='../../mock/logs', log_file='mock_real_time_dealer.log'):
         # Initialize mock data handlers
         self.data_handler = datahandler or RealTimeDataHandler('config/source.json', 'config/fetch_real_time.json')  
         self.features = feature_module or FeatureExtractor(self.data_handler)
         self.signal_processors = signal_processors
-        if signal_processors is None:
+        if signal_processors is None and os.path.exists('config/processors.json'):
             processors_config = json.load(open('config/processors.json', 'r'))
             self.signal_processors = {}
             for processor_name, config in processors_config:
@@ -44,9 +44,15 @@ class MockRealtimeDealer:
         self.equity = None  
         self.symbols = self.data_handler.symbols
         self.equity = None # total equity in USDT
+        self.quantities = {} # total quantity in each symbol
         self.balances_symbol = None # total balance in each symbol
+        ###### This is the balances in USDT
         self.balances_str = None # total balance in each symbol in string
+        ####### the balances are in assets quantities not in USDT
         self.balances_symbol_fr = None # free balance in each symbol
+        ####### Free balances in USDT
+        ####### Question, which one should be related to the risk manager?
+        ####### For deciding postion is the free one, for portfolio management, the total one.
         self.allocation_cryp = None ## Total allocation to crypto
         self.assigned_percentage = None
         self.entry_prices = {}
@@ -82,11 +88,13 @@ class MockRealtimeDealer:
 
             if asset == 'USDT':
                 total_equity += total
+                self.quantities[asset] = total
             else:
                 symbol = f"{asset}USDT"
                 price = self.get_asset_price(asset, 'USDT')
                 total_equity += total * price
-                self.balances_symbol[symbol] = total
+                self.quantities[asset] = total
+                self.balances_symbol[symbol] = total * price
                 self.balances_symbol_fr[symbol] = free * price
 
         return total_equity
@@ -116,18 +124,17 @@ class MockRealtimeDealer:
                 trade_price = float(order['price'])
                 trade_side = order['side']  # 'BUY' or 'SELL'
 
-                if trade_side == 'BUY':
+                if trade_side == 'buy':
                     total_cost += trade_qty * trade_price  # Accumulate the cost
                     total_bought_qty += trade_qty  # Accumulate the quantity bought
                     remaining_qty += trade_qty  # Add to the open position
-                elif trade_side == 'SELL':
+                elif trade_side == 'sell':
                     remaining_qty -= trade_qty  # Reduce the open position by the sold quantity
                     # If more quantity is sold than was bought, reset total cost and quantities
                     if remaining_qty < 0:
                         remaining_qty = 0
                         total_cost = 0
                         total_bought_qty = 0
-                
                 if total_cost>=self.balances_symbol_fr[symbol]:
                     break
             
@@ -145,13 +152,12 @@ class MockRealtimeDealer:
         self.assigned_percentage = assigned_percentage
         self.Strategy.set_assigned_percentage(assigned_percentage)
         self.RiskManager.set_assigned_percentage(assigned_percentage)
-    
-    def update_assigned_percentage(self, assigned_percentage):
-        self.assigned_percentage = assigned_percentage
-        self.RiskManager.set_assigned_percentage(assigned_percentage)
-        self.Strategy.set_assigned_percentage(assigned_percentage)
 
     
+    def update_assigned_percentage(self):
+        self.assigned_percentage = self.PortfolioManager.get_assigned_percentage()
+        self.RiskManager.update_assigned_percentage(self.assigned_percentage)
+        self.Strategy.update_assigned_percentage(self.assigned_percentage)
 
 
     def equity_balance_tools(self):
@@ -160,16 +166,10 @@ class MockRealtimeDealer:
         self.Strategy.set_equity(self.equity) # Maybe redundant
         self.Strategy.set_balances(self.balances_symbol_fr)  # Maybe redundant
         self.PortfolioManager.set_equity(self.equity)
-        self.PortfolioManager.set_balances(self.balances_symbol_fr)
-#        self.CapitalAllocator.set_equity(self.equity)
-#        self.CapitalAllocator.set_balances(self.balances_symbol_fr)
-
+        self.PortfolioManager.set_balances(self.balances_symbol)
+        self.CapitalAllocator.set_equity(self.equity)
+        self.CapitalAllocator.set_balances(self.balances_symbol)
     
-    def update_equity_balances(self):
-        self.RiskManager.update_equity(self.equity)
-        self.Strategy.update_equity(self.equity) # Maybe redundant
-        self.RiskManager.update_balances(self.balances_symbol_fr)
-        self.Strategy.update_balances(self.balances_symbol_fr) # Maybe redundant
 
 ########################### Block 1: equity, balances, entry prices, asigned capitals ########################################
 
@@ -187,7 +187,7 @@ class MockRealtimeDealer:
         self.equity_balance()
         self.initialize_CapitalAllocator(self.equity, self.balances_symbol_fr)
         self.allocation_cryp = self.CapitalAllocator.get_allocation_cryp() 
-        self.initialize_PortfolioManager(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.symbols) 
+        self.initialize_PortfolioManager(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.symbols, self.data_handler) 
         self.assigned_percentage = self.PortfolioManager.get_assigned_percentage()
         self.initialize_Straegy(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.assigned_percentage)          # Model, RiskManager is initialized here
         self.set_assigned_percentage(self.assigned_percentage) # percentage here is smaller than the 1.0
@@ -198,7 +198,6 @@ class MockRealtimeDealer:
     def initialize_PortfolioManager(self, equity, balances_symbol_fr, allocation_cryp, symbols):
         self.PortfolioManager = PortfolioManager(equity, balances_symbol_fr, allocation_cryp, symbols)
 
-    
     
     def initialize_Straegy(self, equity, balances, allocation_cryp, assigned_percentage):
         # Read from json file
@@ -313,6 +312,7 @@ class MockRealtimeDealer:
                         amount=free_balance,
                         price=-1
                     )
+
             # Check for any stop-loss or take-profit conditions and execute orders
             # After executing the orders, update the equity and balances
             self.equity_balance()
@@ -355,6 +355,9 @@ class MockRealtimeDealer:
     def stop(self):
         self.is_running = False
         self.logger.info("Stopping MockRealtimeDealer.")
+
+    def reset_trader(self):
+        pass
 
 if __name__ == "__main__":
     dealer = MockRealtimeDealer()

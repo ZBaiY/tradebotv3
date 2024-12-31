@@ -12,14 +12,14 @@ from src.data_handling.real_time_data_handler import LoggingHandler
 
 
 class MockOrderManager:
-    def __init__(self, log_dir='/mock/logs', log_file='mock_order_manager.log'):
+    def __init__(self, log_dir='../../mock/logs', log_file='mock_order_manager.log'):
         # Initialize the mock data file
-        self.orders = {}
-        self.trades = []
+        self.orders = {} # unexecuted orders
         self.account_info = {}
         self.initialize_mock_data_file()
-        self.mock_trade_file = 'src/mock_trading/config/mock_past_trades.json'
-        self.mock_account_file = 'src/mock_trading/config/mock_account.json'
+        self.mock_trade_file = '../../mock/config/mock_past_trades.json'
+        self.mock_account_file = '../../mock/config/mock_account.json'
+        self.mock_order_file = '../../mock/config/mock_orders.json'
 
         # Initialize logging
         self.logger = self._initialize_logging(log_dir, log_file)
@@ -39,40 +39,41 @@ class MockOrderManager:
         """
         Create the mock data file if it doesn't exist, and initialize the structure.
         """
-        if not os.path.exists(self.mock_data_file):
-            self.logger.info(f"Mock data file not found. Creating {self.mock_data_file}.")
-            self.reset_mock_data()
+        if not os.path.exists(self.mock_account_file):
+            self.logger.info(f"Mock account file {self.mock_account_file} not found. Creating new file.")
+            with open(self.mock_account_file, 'w') as file:
+                json.dump(self.account_info, file, indent=4)
         else:
-            with open(self.mock_data_file, 'r') as file:
-                data = json.load(file)
-                self.orders = data.get("orders", {})
-                self.trades = data.get("trades", [])
-                self.account_info = data.get("account_info", {})
+            self.account_info = self.get_account_info()
+        """
+        ##### no need to load in memories, one would read directly.
+        if not os.path.exists(self.mock_trade_file):
+            self.logger.info(f"Mock trade file {self.mock_trade_file} not found. Creating new file.")
+            with open(self.mock_trade_file, 'w') as file:
+                json.dump([], file, indent=4)
+                
+        else:
+            with open(self.mock_trade_file, 'r') as file:
+                self.trades = json.load(file)
+            self.logger.info(f"Loaded {len(self.trades)} mock trades from file.")
+        
+        ##### no need to load in memories, one would read directly.
 
-    def reset_mock_data(self):
+        if not os.path.exists(self.mock_order_file):
+            self.logger.info(f"Mock order file {self.mock_order_file} not found. Creating new file.")
+            with open(self.mock_order_file, 'w') as file:
+                json.dump({}, file, indent=4)
+        else:
+            with open(self.mock_order_file, 'r') as file:
+                self.orders = json.load(file)
+            self.logger.info(f"Loaded {len(self.orders)} mock orders from file.")
         """
-        Reset the mock data file to a default state.
-        """
-        self.orders = {}
-        self.trades = []
-        self.account_info = {
-            "balances": [{"asset": "USDT", "free": "100000.0", "locked": "0.0"}],
-            "permissions": ["SPOT"]
-        }
-        self.save_mock_data()
+
+    
+
 
     def save_mock_data(self):
-        """
-        Save the current state of orders, trades, and account info to the mock data file.
-        """
-        data = {
-            "orders": self.orders,
-            "trades": self.trades,
-            "account_info": self.account_info
-        }
-        with open(self.mock_data_file, 'w') as file:
-            json.dump(data, file, indent=4)
-        self.logger.info("Mock data saved to file.")
+        pass
 
     def get_current_price(self, symbol):
         try:
@@ -88,7 +89,8 @@ class MockOrderManager:
         Simulate creating an order.
         # for market order, the order is placed immediately
         """
-        order_id = int(time.time())  # Mock order ID using timestamp
+        id_symbol = {'BTCUSDT': 1, 'ETHUSDT': 2, 'BNBUSDT': 3, 'ADAUSDT': 4, 'DOGEUSDT': 5, 'SOLUSDT': 6, 'DOTUSDT': 7, 'UNIUSDT': 8, 'LTCUSDT': 9}
+        order_id = int(time.time())*10+id_symbol  # Mock order ID using timestamp
         timestamp = int(time.time() * 1000)  # Mock transaction time in milliseconds
         status = "FILLED" if price == -1 else "OPEN"
 
@@ -97,34 +99,146 @@ class MockOrderManager:
             "orderId": order_id,
             "clientOrderId": f"mock_{order_id}",  # Mock client order ID
             "transactTime": timestamp,
-            "price": price if price != -1 else "Market Price",
+            "price": price,
             "origQty": amount,
             "executedQty": amount if status == "FILLED" else 0,
             "cummulativeQuoteQty": amount * price if price != -1 else 0,
             "status": status,
             "timeInForce": "GTC",
             "type": "MARKET" if price == -1 else "LIMIT",
-            "side": order_type.upper()
+            "side": order_type # buy or sell
         }
 
         # Update balances and trades
         price = self.get_current_price(symbol) if price == -1 else price
         self.update_mock_account(symbol, order_type, amount, price)
-        if status == "FILLED":
-            self.update_trade_file(symbol, order_type, amount, price)
+        if status == "FILLED": # if market order
+            self.update_trade_file(symbol, order)
         else:
             self.orders[order_id] = order
+            self.locking_assets(order) # lock assets if order is not filled
 
-        self.save_mock_data()
+
         self.logger.info(f"Created mock order: {order}")
         return order
+    
+    def locking_assets(self, order):
+        pass
+    def release_assets(self, order):
+        pass
+    
+    def update_mock_account(self, symbol, order_type, amount, price):
+        """
+        Update mock account balances based on order details.
+        """
+        base_asset = symbol[:-4]  # Assuming symbol is like BTCUSDT
+        quote_asset = symbol[-4:]  # Assuming last 4 chars are the quote asset (e.g., USDT)
+
+        # Read the current account info from the JSON file
+        with open(self.mock_account_file, 'r') as file:
+            account_info = json.load(file)
+
+        # Convert string amounts to float for calculations
+        balances = {balance['asset']: float(balance['free']) for balance in account_info['balances']}
+        locked = {balance['asset']: balance['locked'] for balance in account_info['balances']}
+        if order_type == "buy":
+            cost = amount * (price if price != -1 else 1)  # Assume 1 for market price
+            if balances.get(quote_asset, 0) >= cost:
+                balances[quote_asset] -= cost
+                balances[base_asset] = balances.get(base_asset, 0) + amount
+
+        elif order_type == "sell":
+            if balances.get(base_asset, 0) >= amount:
+                balances[base_asset] -= amount
+                balances[quote_asset] = balances.get(quote_asset, 0) + amount * (price if price != -1 else 1)
+
+        # Update the account info with the new balances
+        account_info['balances'] = [{"asset": asset, "free": str(free), "locked": locked[asset]} for asset, free in balances.items()]
+
+        # Write the updated account info back to the JSON file
+        with open(self.mock_account_file, 'w') as file:
+            json.dump(account_info, file, indent=4)
+    
+    
+    def execute_order(self):
+        for order in self.orders:
+            if order["status"] == "OPEN":
+                symbol = order["symbol"]
+                side = order["side"]
+                market_price = self.get_current_price(symbol)
+                if side == 'buy' and market_price <= order["price"]:
+                    quantity = order["origQty"]
+                    order['status'] = 'Filled'
+                    self.update_mock_account(symbol, side, quantity, market_price)
+                    self.update_trade_file(symbol, order)
+                    self.release_assets(order)
+                    self.orders.pop(order["orderId"])
+                    input('check order manager 174')
+
+                    
+                elif side == 'sell' and market_price >= order["price"]:
+                    quantity = order["origQty"]
+                    order['status'] = 'Filled'
+                    self.update_mock_account(symbol, side, quantity, market_price)
+                    self.update_trade_file(symbol, order)
+                    self.release_assets(order)
+                    self.orders.pop(order["orderId"])
+                    input('check order manager 184')
+
+    def update_trade_file(self, trade):
+        """
+        Append a new trade to the mock trade file.
+        """
+        # Read the current trades from the JSON file
+        try:
+            with open(self.mock_trade_file, 'r') as file:
+                trades = json.load(file)
+        except FileNotFoundError:
+            trades = []
+
+        # Append the new trade
+        if trade['status'] == "FILLED":
+            trades.append(trade)
+        else: print("Tried to write in but order not filled")
+        # Write the updated trades back to the JSON file
+        with open(self.mock_trade_file, 'w') as file:
+            json.dump(trades, file, indent=4)
+    
+
+    def calculate_entry_price(self, symbol):
+    # Reverse the list of trades to process anti-chronologically
+        if os.path.exists(self.mock_trade_file):
+            with open(self.mock_trade_file, 'r') as file:
+                trades = json.load(file)
+        trades_reversed = trades[::-1]
+        
+        total_qty = 0.0  # Total quantity of asset bought
+        total_cost = 0.0  # Total cost of the asset (price * qty)
+
+        for trade in trades_reversed:
+            # Filter trades by symbol and side
+            if trade["symbol"] == symbol and trade["side"] == "buy":
+                price = float(trade["price"])
+                qty = float(trade["qty"])
+
+                # Accumulate total cost and quantity
+                total_qty += qty
+                total_cost += price * qty
+
+        # Calculate entry price (if total_qty is zero, avoid division by zero)
+        if total_qty == 0:
+            return None  # No BUY trades for the given symbol
+        entry_price = total_cost / total_qty
+        return entry_price
 
     def cancel_order(self, order_id):
         """
         Simulate cancelling an order.
         """
         if order_id in self.orders:
+            
             order = self.orders.pop(order_id)
+            input('check order manager 238')
             order['status'] = "CANCELED"
             self.save_mock_data()
             self.logger.info(f"Cancelled mock order: {order}")
@@ -190,62 +304,8 @@ class MockOrderManager:
             self.logger.error(f"Unexpected error in fetch_past_trades_from_api: {e}")
             return []
         
-    
 
-    def update_mock_account(self, symbol, order_type, amount, price):
-        """
-        Update mock account balances based on order details.
-        """
-        base_asset = symbol[:-4]  # Assuming symbol is like BTCUSDT
-        quote_asset = symbol[-4:]  # Assuming last 4 chars are the quote asset (e.g., USDT)
-
-        # Read the current account info from the JSON file
-        with open(self.mock_account_file, 'r') as file:
-            account_info = json.load(file)
-
-        # Convert string amounts to float for calculations
-        balances = {balance['asset']: float(balance['free']) for balance in account_info['balances']}
-
-        if order_type == "buy":
-            cost = amount * (price if price != -1 else 1)  # Assume 1 for market price
-            if balances.get(quote_asset, 0) >= cost:
-                balances[quote_asset] -= cost
-                balances[base_asset] = balances.get(base_asset, 0) + amount
-
-        elif order_type == "sell":
-            if balances.get(base_asset, 0) >= amount:
-                balances[base_asset] -= amount
-                balances[quote_asset] = balances.get(quote_asset, 0) + amount * (price if price != -1 else 1)
-
-        # Update the account info with the new balances
-        account_info['balances'] = [{"asset": asset, "free": str(free), "locked": "0.0"} for asset, free in balances.items()]
-
-        # Write the updated account info back to the JSON file
-        with open(self.mock_account_file, 'w') as file:
-            json.dump(account_info, file, indent=4)
-
-    def update_trade_file(self, symbol, order_type, amount, price):
-        """
-        Append a new trade to the mock trade file.
-        """
-        new_trade = {
-            "symbol": symbol,
-            "id": int(time.time()),  # Mock trade ID using timestamp
-            "orderId": int(time.time()),  # Mock order ID using timestamp
-            "side": order_type.upper(),
-            "price": f"{price:.2f}",
-            "qty": f"{amount:.8f}",
-            "realizedPnl": "0.00",  # Assuming no realized PnL for simplicity
-            "marginAsset": symbol[-4:],  # Assuming last 4 chars are the quote asset (e.g., USDT)
-            "quoteQty": f"{amount * price:.2f}",
-            "commission": "0.00",  # Assuming no commission for simplicity
-            "commissionAsset": symbol[-4:],  # Assuming last 4 chars are the quote asset (e.g., USDT)
-            "time": int(time.time() * 1000),  # Mock transaction time in milliseconds
-            "positionSide": "BOTH",  # Assuming position side is BOTH for simplicity
-            "buyer": order_type.lower() == "buy",
-            "maker": False  # Assuming the order is not a maker order for simplicity
-        }
-
+    def update_trades(self, new_trade):
         # Read the current trades from the JSON file
         try:
             with open(self.mock_trade_file, 'r') as file:

@@ -1,5 +1,6 @@
 {
     "salary": 9000,
     "saving_interest": 0.03,
-    "allocate_method": "manual"
+    "allocate_method": "manual",
+    "capital_allocation_percentage": 1.0
 }

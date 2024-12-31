@@ -380,7 +380,7 @@ class MultiAssetBacktester:
         self.equity_balance()
         self.initialize_PortfolioManager()
         self.assigned_percentage = self.portfolio_manager.assigned_percentage
-        self.initialize_Strategy(self.quantity_symbols, self.data_handler_copy)
+        self.initialize_Strategy(self.balances_symbol, self.data_handler_copy)
         self.set_entry_prices()
 
     def read_quantities(self):
@@ -412,7 +412,7 @@ class MultiAssetBacktester:
         self.risk_manager.initialize_singles()
         self.risk_manager.calculate_position()
 
-        self.strategy = MultiAssetStrategy(self.total_equity, quantities, self.balances_symbol, self.total_equity, data_handler, self.risk_manager, m_config, d_config,
+        self.strategy = MultiAssetStrategy(self.total_equity, self.balances_symbol, self.total_equity, self.assigned_percentage, data_handler, self.risk_manager, m_config, d_config,
                                         self.feature_handler, self.signal_processors)
         self.strategy.initialize_singles()
 
@@ -617,7 +617,7 @@ class MultiAssetBacktester:
         # Calculate comprehensive performance metrics
         return evaluator.calculate_metrics()
 
-    def save_metrics(self, output_path="backtest_results/"):
+    def save_metrics(self, output_path="backtest/performance/multi_symbol/"):
         """
         Save performance metrics to JSON files.
         """
