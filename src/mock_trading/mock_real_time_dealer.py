@@ -17,7 +17,7 @@ from src.portfolio_management.capital_allocator import CapitalAllocator
 from src.portfolio_management.portfolio_manager import PortfolioManager
 from src.feature_engineering.feature_extractor import FeatureExtractor
 from src.signal_processing.signal_processor import SignalProcessor
-import src.strategy.multi_asset_strategy as MultiAssetStrategy
+from src.strategy.multi_asset_strategy import MultiAssetStrategy
 # from src.live_trading.execution_handler import ExecutionHandler
 from mock_trading.mock_order_manager import MockOrderManager
 
@@ -45,16 +45,16 @@ class MockRealtimeDealer:
         self.symbols = self.data_handler.symbols
         self.equity = None # total equity in USDT
         self.quantities = {} # total quantity in each symbol
-        self.balances_symbol = None # total balance in each symbol
+        self.balances_symbol = {} # total balance in each symbol
         ###### This is the balances in USDT
-        self.balances_str = None # total balance in each symbol in string
+        self.balances_str = {} # total balance in each symbol in string
         ####### the balances are in assets quantities not in USDT
-        self.balances_symbol_fr = None # free balance in each symbol
+        self.balances_symbol_fr = {} # free balance in each symbol
         ####### Free balances in USDT
         ####### Question, which one should be related to the risk manager?
         ####### For deciding postion is the free one, for portfolio management, the total one.
         self.allocation_cryp = None ## Total allocation to crypto
-        self.assigned_percentage = None
+        self.assigned_percentage = {}
         self.entry_prices = {}
 
 
@@ -72,9 +72,14 @@ class MockRealtimeDealer:
 
 ########################### Block 1: equity, balances, entry prices, asigned capitals ########################################
     def equity_balance(self):
-        info = self.OrderManager.get_account_info()['balance']
+        
+        info = self.OrderManager.get_account_info()
         self.balances_str = info['balances']
         self.equity = self.calculate_equity(self.balances_str)
+        if self.RiskManager: self.RiskManager.update_equity_balance(self.equity, self.balances_symbol_fr)
+        if self.Strategy: self.Strategy.update_equity_balance(self.equity, self.balances_symbol_fr)
+        if self.PortfolioManager: self.PortfolioManager.update_equity_balance(self.equity, self.balances_symbol)
+        if self.CapitalAllocator: self.CapitalAllocator.set_equity(self.equity)
 
     # Assets e.g. BTC, are not symbols, symbols are trading pairs e.g. BTCUSDT
     # Assests are used to calculate the equity in Binance API
@@ -112,7 +117,7 @@ class MockRealtimeDealer:
         :param symbol: The symbol to calculate the entry price for (e.g., 'BTCUSDT').
         :return: The average entry price or None if no open position.
         """
-        past_trades = self.OrderManager.fetch_past_trades_from_api()
+        past_trades = self.OrderManager.fetch_past_trades_from_api(symbol)
         total_bought_qty = 0.0
         total_cost = 0.0
         remaining_qty = 0.0
@@ -185,23 +190,28 @@ class MockRealtimeDealer:
         After this function, all the tools are ready to run
         """
         self.equity_balance()
-        self.initialize_CapitalAllocator(self.equity, self.balances_symbol_fr)
-        self.allocation_cryp = self.CapitalAllocator.get_allocation_cryp() 
-        self.initialize_PortfolioManager(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.symbols, self.data_handler) 
-        self.assigned_percentage = self.PortfolioManager.get_assigned_percentage()
+        self.initialize_CapitalAllocator(self.equity)
+        self.initialize_PortfolioManager() 
         self.initialize_Straegy(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.assigned_percentage)          # Model, RiskManager is initialized here
         self.set_assigned_percentage(self.assigned_percentage) # percentage here is smaller than the 1.0
         self.set_entry_prices()
     
-    def initialize_CapitalAllocator(self):
-        self.CapitalAllocator = CapitalAllocator()
-    def initialize_PortfolioManager(self, equity, balances_symbol_fr, allocation_cryp, symbols):
-        self.PortfolioManager = PortfolioManager(equity, balances_symbol_fr, allocation_cryp, symbols)
+    def initialize_CapitalAllocator(self, equity):
+        self.CapitalAllocator = CapitalAllocator(equity)
+        self.allocation_cryp = self.CapitalAllocator.get_allocation_cryp() 
+
+    def initialize_PortfolioManager(self):
+        """
+        Initialize the portfolio manager.
+        """
+        self.portfolio_manager = PortfolioManager(self.equity, self.balances_symbol, self.allocation_cryp ,self.symbols, self.data_handler)
+        self.assigned_percentage = self.portfolio_manager.assigned_percentage
 
     
     def initialize_Straegy(self, equity, balances, allocation_cryp, assigned_percentage):
         # Read from json file
         s_config = json.load(open('config/strategy.json', 'r'))
+        
         m_config = {}
         r_config = {}
         d_config = {}
@@ -211,7 +221,7 @@ class MockRealtimeDealer:
             d_config[symbol] = s_config[symbol]['decision_maker']
 
         #### will set the equity, balances, assigned_capitals, initialize the singles
-        self.RiskManager = RiskManager(equity, balances, allocation_cryp, assigned_percentage, s_config, self.data_handler, self.signal_processors, self.features)
+        self.RiskManager = RiskManager(equity, balances, allocation_cryp, assigned_percentage, r_config, self.data_handler, self.signal_processors, self.features)
         self.RiskManager.initialize_singles()
         self.RiskManager.calculate_position()
         #### will set the equity, balances, assigned_capitals, initialize the models
@@ -253,35 +263,35 @@ class MockRealtimeDealer:
         next_fetch_time, last_fetch_time = self.data_handler.pre_run_data()
         self.logger.info("Starting RealtimeDealer.")
         self.run_initialization()
+        self.features.pre_run_indicators()
 
         while self.is_running:
             self.data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
+            
+            self.equity_balance()
             self.data_handler.notify_subscribers()
-            # Includes running the data processing (for the processor who need it), feature extraction
+            self.update_assigned_percentage()
+            self.set_entry_prices()
             market_orders = self.Strategy.run_strategy_market()
-            # Includes running the model prediction, generating signals, 
-            # and applying stop loss/take profit to determine amount to buy/sell
+            # Includes running data processing, feature extraction, model prediction, generating signals, 
+            # and applying stop loss/take profit to determine amount to buy/sell.
             """
             Example return values from the strategy:
-            limit_signals = {
-                'BTCUSDT': {'signal': 'buy', 'amount': 0.1, 'price': 10000.0},
-                'ETHUSDT': {'signal': 'sell', 'amount': 0.2, 'price': 500.0}
-            }
-            market_orders = {
-                'BTCUSDT': {'signal': 'buy', 'amount': 0.1},
-                'ETHUSDT': {'signal': 'sell', 'amount': 0.2}
-            }
+            limit_signals = {'BTCUSDT': {'signal': 'buy', 'amount': 0.1, 'price': 10000.0}, 'ETHUSDT': {'signal': 'sell', 'amount': 0.2, 'price': 500.0}}
+            market_orders = {'BTCUSDT': {'signal': 'buy', 'amount': 0.1}, 'ETHUSDT': {'signal': 'sell', 'amount': 0.2}}
             """
 
             # Handle limit signals
-            """for symbol, signal in limit_signals.items():
+            """
+            for symbol, signal in limit_signals.items():
                 if signal['signal'] in ['buy', 'sell']:
                     self.OrderManager.create_order(
                         symbol=symbol,
                         order_type=signal['signal'],
                         amount=signal['amount'],
                         price=signal['price']
-                    )"""
+                    )
+            """
             stop_loss = self.RiskManager.get_stop_loss()
             take_profit = self.RiskManager.get_take_profit()
             # Handle market orders
@@ -315,9 +325,7 @@ class MockRealtimeDealer:
 
             # Check for any stop-loss or take-profit conditions and execute orders
             # After executing the orders, update the equity and balances
-            self.equity_balance()
-            self.update_equity_balances()
-            self.set_entry_prices()
+            
             
             
             ######

@@ -16,14 +16,17 @@ class MockOrderManager:
         # Initialize the mock data file
         self.orders = {} # unexecuted orders
         self.account_info = {}
-        self.initialize_mock_data_file()
-        self.mock_trade_file = '../../mock/config/mock_past_trades.json'
-        self.mock_account_file = '../../mock/config/mock_account.json'
-        self.mock_order_file = '../../mock/config/mock_orders.json'
-
-        # Initialize logging
+        
+        self.mock_trade_file = 'mock/config/mock_past_trades.json'
+        self.mock_account_file = 'mock/config/mock_account.json'
+        self.mock_order_file = 'mock/config/mock_orders.json'
         self.logger = self._initialize_logging(log_dir, log_file)
         self.logger.info("MockOrderManager initialized.")
+        
+        self.initialize_mock_data_file()
+
+        # Initialize logging
+        
 
     def _initialize_logging(self, log_dir, log_file):
         os.makedirs(log_dir, exist_ok=True)
@@ -44,7 +47,10 @@ class MockOrderManager:
             with open(self.mock_account_file, 'w') as file:
                 json.dump(self.account_info, file, indent=4)
         else:
+            # print("account file exists")
             self.account_info = self.get_account_info()
+            # print(self.account_info)
+            # input('check order manager 52')
         """
         ##### no need to load in memories, one would read directly.
         if not os.path.exists(self.mock_trade_file):
@@ -111,9 +117,13 @@ class MockOrderManager:
 
         # Update balances and trades
         price = self.get_current_price(symbol) if price == -1 else price
-        self.update_mock_account(symbol, order_type, amount, price)
         if status == "FILLED": # if market order
+            print("before: ",self.account_info)
             self.update_trade_file(symbol, order)
+            self.update_mock_account(symbol, order)
+            print(order)
+            print("after: ",self.account_info)
+            input('check order manager 120')
         else:
             self.orders[order_id] = order
             self.locking_assets(order) # lock assets if order is not filled
@@ -127,10 +137,14 @@ class MockOrderManager:
     def release_assets(self, order):
         pass
     
-    def update_mock_account(self, symbol, order_type, amount, price):
+    def update_mock_account(self, order):
         """
         Update mock account balances based on order details.
         """
+        symbol = order["symbol"]
+        order_type = order["side"]
+        amount = float(order["executedQty"])
+        price = float(order["price"])
         base_asset = symbol[:-4]  # Assuming symbol is like BTCUSDT
         quote_asset = symbol[-4:]  # Assuming last 4 chars are the quote asset (e.g., USDT)
 
@@ -154,12 +168,12 @@ class MockOrderManager:
 
         # Update the account info with the new balances
         account_info['balances'] = [{"asset": asset, "free": str(free), "locked": locked[asset]} for asset, free in balances.items()]
-
+        self.account_info = account_info
         # Write the updated account info back to the JSON file
         with open(self.mock_account_file, 'w') as file:
             json.dump(account_info, file, indent=4)
     
-    
+
     def execute_order(self):
         for order in self.orders:
             if order["status"] == "OPEN":

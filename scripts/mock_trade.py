@@ -10,3 +10,4 @@ from src.mock_trading.mock_real_time_dealer import MockRealtimeDealer
 
 if __name__ == '__main__':
     trader = MockRealtimeDealer()
+    trader.run_initialization()

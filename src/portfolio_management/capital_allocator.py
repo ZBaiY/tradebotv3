@@ -17,13 +17,13 @@ Will be directly used in the real-time trading module.s
 """
 
 class CapitalAllocator:
-    def __init__(self, config_path='config/capital.json'):
+    def __init__(self, equity, config_path='config/capital.json'):
         self.load_config(config_path)
         self.salary = self.config['salary']
-        self.savings_interest = self.config['savings_interest']
+        self.saving_interest = self.config['saving_interest']
         self.allocate_method = self.config['allocate_method']
         self.capital_allocation_percentage = self.config.get('capital_allocation_percentage', 0.1)
-        self.equity = None
+        self.equity = equity
         self.balances = None
 
     def set_equity(self, equity):

@@ -25,7 +25,7 @@ class PortfolioManager:
         self.params = self.config['params']
         self.assigned_percentage = {}
         self.data_handler = data_handler
-        self.data_handler.subscribe(self)
+        # self.data_handler.subscribe(self)
         self.pre_run()
 
     def pre_run(self):
@@ -40,6 +40,10 @@ class PortfolioManager:
         else: 
             pass
         
+    def update_equity_balance(self, equity, balances):
+        self.equity = equity
+        self.balances = balances
+        self.pre_run()
 
 
     def set_equity(self, equity):

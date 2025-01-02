@@ -463,8 +463,11 @@ class MultiAssetBacktester:
         # Load and prepare data
         self.data_handler.load_data(interval_str=self.interval_str, begin_date=self.start_date, end_date=self.end_date)
         # Initialize equity and balances
+        """
+        For quick testing, we limit the data to the last 3000 rows.
         for symbol in self.symbols:
             self.data_handler.cleaned_data[symbol] = self.data_handler.cleaned_data[symbol].tail(3000)
+        """
         self.equity_balance()
         self.equity_history.append(self.total_equity)
         for symbol in self.symbols:

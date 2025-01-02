@@ -41,6 +41,9 @@ class BaseStrategy():
 
 
 
+    def update_equity_balance(self, equity, balances):
+        # override this method in the child class
+        pass
 
     def set_allocation_cryp(self, allocation_cryp):
         self.allocation_cryp = allocation_cryp
