@@ -307,6 +307,7 @@ class FeatureExtractor:
 
 
     def update_mom_indicators(self, symbol, data):
+        # print(data)
         last_index = self.indicators[symbol].index[-1]
         if 'rsi' in self.indicators[symbol].columns:
             prev_data = self.data_handler.get_data_limit(symbol, 2, clean=True)

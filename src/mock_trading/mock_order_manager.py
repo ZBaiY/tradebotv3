@@ -96,7 +96,7 @@ class MockOrderManager:
         # for market order, the order is placed immediately
         """
         id_symbol = {'BTCUSDT': 1, 'ETHUSDT': 2, 'BNBUSDT': 3, 'ADAUSDT': 4, 'DOGEUSDT': 5, 'SOLUSDT': 6, 'DOTUSDT': 7, 'UNIUSDT': 8, 'LTCUSDT': 9}
-        order_id = int(time.time())*10+id_symbol  # Mock order ID using timestamp
+        order_id = int(time.time())*10+id_symbol[symbol]  # Mock order ID using timestamp
         timestamp = int(time.time() * 1000)  # Mock transaction time in milliseconds
         status = "FILLED" if price == -1 else "OPEN"
 
@@ -117,13 +117,10 @@ class MockOrderManager:
 
         # Update balances and trades
         price = self.get_current_price(symbol) if price == -1 else price
+        order['price'] = price
         if status == "FILLED": # if market order
-            print("before: ",self.account_info)
-            self.update_trade_file(symbol, order)
-            self.update_mock_account(symbol, order)
-            print(order)
-            print("after: ",self.account_info)
-            input('check order manager 120')
+            self.update_trade_file(order)
+            self.update_mock_account(order)
         else:
             self.orders[order_id] = order
             self.locking_assets(order) # lock assets if order is not filled
@@ -183,8 +180,8 @@ class MockOrderManager:
                 if side == 'buy' and market_price <= order["price"]:
                     quantity = order["origQty"]
                     order['status'] = 'Filled'
-                    self.update_mock_account(symbol, side, quantity, market_price)
-                    self.update_trade_file(symbol, order)
+                    self.update_mock_account(order)
+                    self.update_trade_file(order)
                     self.release_assets(order)
                     self.orders.pop(order["orderId"])
                     input('check order manager 174')
@@ -193,8 +190,8 @@ class MockOrderManager:
                 elif side == 'sell' and market_price >= order["price"]:
                     quantity = order["origQty"]
                     order['status'] = 'Filled'
-                    self.update_mock_account(symbol, side, quantity, market_price)
-                    self.update_trade_file(symbol, order)
+                    self.update_mock_account(order)
+                    self.update_trade_file(order)
                     self.release_assets(order)
                     self.orders.pop(order["orderId"])
                     input('check order manager 184')
@@ -318,6 +315,7 @@ class MockOrderManager:
             self.logger.error(f"Unexpected error in fetch_past_trades_from_api: {e}")
             return []
         
+    
 
     def update_trades(self, new_trade):
         # Read the current trades from the JSON file
@@ -333,3 +331,79 @@ class MockOrderManager:
         # Write the updated trades back to the JSON file
         with open(self.mock_trade_file, 'w') as file:
             json.dump(trades, file, indent=4)
+
+    def reset_config(self):
+
+        default_account_info = {
+            "makerCommission": 15,
+            "takerCommission": 15,
+            "buyerCommission": 0,
+            "sellerCommission": 0,
+            "canTrade": True,
+            "canWithdraw": True,
+            "canDeposit": True,
+            "updateTime": 1624362346000,
+            "accountType": "SPOT",
+            "balances": [
+                {
+                    "asset": "BTC",
+                    "free": "0.0000000",
+                    "locked": "0.0000000"
+                },
+                {
+                    "asset": "ETH",
+                    "free": "0.0000000",
+                    "locked": "0.0000000"
+                },
+                {
+                    "asset": "USDT",
+                    "free": "1000.00000000",
+                    "locked": "0.00000000"
+                }
+            ],
+            "permissions": ["SPOT"]
+        }
+
+        # Reset the mock account file
+        with open(self.mock_account_file, 'w') as file:
+            json.dump(default_account_info, file, indent=4)
+        self.logger.info(f"Reset mock account file {self.mock_account_file}.")
+        default_trades = [
+            {
+                "symbol": "ETHUSDT",
+                "orderId": 17358143672,
+                "clientOrderId": "mock_17358143672",
+                "transactTime": 1735814367610,
+                "price": 3468.000,
+                "origQty": 0.14400031387882295,
+                "executedQty": 0.14400031387882295,
+                "cummulativeQuoteQty": 0,
+                "status": "FILLED",
+                "timeInForce": "GTC",
+                "type": "MARKET",
+                "side": "buy"
+            },
+            {
+                "symbol": "ETHUSDT",
+                "orderId": 17358143672,
+                "clientOrderId": "mock_17358143672",
+                "transactTime": 1735814367610,
+                "price": 3468.000,
+                "origQty": 0.14400031387882295,
+                "executedQty": 0.14400031387882295,
+                "cummulativeQuoteQty": 0,
+                "status": "FILLED",
+                "timeInForce": "GTC",
+                "type": "MARKET",
+                "side": "sell"
+            }
+        ]
+        # Reset the mock trade file
+        with open(self.mock_trade_file, 'w') as file:
+            json.dump(default_trades, file, indent=4)
+        self.logger.info(f"Reset mock trade file {self.mock_trade_file}.")
+
+        # Reset the mock order file
+        with open(self.mock_order_file, 'w') as file:
+            json.dump({}, file, indent=4)
+        self.logger.info(f"Reset mock order file {self.mock_order_file}.")

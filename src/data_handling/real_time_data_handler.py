@@ -438,24 +438,30 @@ class RealTimeDataHandler(DataHandler):
     def load_last_fetch_time(self):
         """
         Load the last fetch time from the log file by reading the last entry.
-        :return: The last fetch time as a datetime object or None if not found.
+        :return: The last fetch time as a datetime object, rounded down to the nearest minute, or None if not found.
         """
         log_file_path = os.path.join(self.log_settings['path'], f"{self.log_settings['file_name2']}_{self.interval_str}.log")
         last_fetch_time = None
 
-        # Open the log file and read it in reverse to find the last fetch time entry
         try:
             with open(log_file_path, 'r') as log_file:
                 lines = log_file.readlines()
 
-            # Traverse the log file in reverse order to find the last fetch time
             for line in reversed(lines):
                 match = re.search(r'Last fetch time: (.+)', line)
                 if match:
                     last_fetch_time_str = match.group(1).strip()
-                    # Use '%Y-%m-%d %H:%M:%S%z' to handle timezone information
-                    last_fetch_time = datetime.strptime(last_fetch_time_str, '%Y-%m-%d %H:%M:%S%z')
-                    break
+                    # Try parsing with and without fractional seconds
+                    for fmt in ['%Y-%m-%d %H:%M:%S.%f%z', '%Y-%m-%d %H:%M:%S%z']:
+                        try:
+                            last_fetch_time = datetime.strptime(last_fetch_time_str, fmt)
+                            # Round down to the nearest minute
+                            last_fetch_time = last_fetch_time.replace(second=0, microsecond=0)
+                            break
+                        except ValueError:
+                            continue
+                    if last_fetch_time:
+                        break
 
         except FileNotFoundError:
             self.warning_logger.warning(f"Log file {log_file_path} not found. No previous fetch time available.")
@@ -463,12 +469,12 @@ class RealTimeDataHandler(DataHandler):
             self.error_logger.error(f"Error reading log file: {e}")
 
         if last_fetch_time:
-            self.data_logger.info(f"Last fetch time loaded: {last_fetch_time}")
+            self.data_logger.info(f"Last fetch time loaded and rounded down to the nearest minute: {last_fetch_time}")
         else:
             self.data_logger.info("No previous fetch time found in the log.")
-
+        
         return last_fetch_time
-    
+        
 
     def load_params(self, file_path):
         if file_path and os.path.exists(file_path):
@@ -752,10 +758,15 @@ class RealTimeDataHandler(DataHandler):
             self.fetch_missing_data(last_fetch_time)
         current_time = datetime.now(timezone.utc) # Update the current time after fetching missing data
         next_fetch_time = current_time - (current_time - datetime.min.replace(tzinfo=timezone.utc)) % self.interval
+        last_fetch_time = next_fetch_time - self.interval
         last_fetch_month = last_fetch_time.strftime("%Y-%m")
 
         if last_fetch_month != self.current_month:
             pass
+
+        # print("Last fetch time: ", last_fetch_time)
+        # print("Next fetch time: ", next_fetch_time)
+        # input("Press Enter to continue...")
 
         return next_fetch_time, last_fetch_time
         

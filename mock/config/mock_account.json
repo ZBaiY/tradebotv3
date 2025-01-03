@@ -11,19 +11,21 @@
     "balances": [
         {
             "asset": "BTC",
-            "free": "0.0000000",
+            "free": "0.00517655449066536",
             "locked": "0.0000000"
         },
         {
             "asset": "ETH",
-            "free": "0.0000000",
+            "free": "2.5770089382648464e-05",
             "locked": "0.0000000"
         },
         {
             "asset": "USDT",
-            "free": "1000.00000000",
+            "free": "499.7580682869897",
             "locked": "0.00000000"
         }
     ],
-    "permissions": ["SPOT"]
+    "permissions": [
+        "SPOT"
+    ]
 }

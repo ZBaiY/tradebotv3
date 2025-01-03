@@ -125,7 +125,7 @@ class MockRealtimeDealer:
         for order in past_trades:
             # Only consider trades for the given symbol that are fully filled
             if order['symbol'] == symbol:
-                trade_qty = float(order['qty'])
+                trade_qty = float(order['executedQty'])
                 trade_price = float(order['price'])
                 trade_side = order['side']  # 'BUY' or 'SELL'
 
@@ -179,6 +179,8 @@ class MockRealtimeDealer:
 ########################### Block 1: equity, balances, entry prices, asigned capitals ########################################
 
 ########################### Block 2: Initialization for the tools ########################################
+    def reset_config(self):
+        self.OrderManager.reset_config()
 
     def run_initialization(self):
         """
@@ -204,8 +206,8 @@ class MockRealtimeDealer:
         """
         Initialize the portfolio manager.
         """
-        self.portfolio_manager = PortfolioManager(self.equity, self.balances_symbol, self.allocation_cryp ,self.symbols, self.data_handler)
-        self.assigned_percentage = self.portfolio_manager.assigned_percentage
+        self.PortfolioManager = PortfolioManager(self.equity, self.balances_symbol, self.allocation_cryp ,self.symbols, self.data_handler)
+        self.assigned_percentage = self.PortfolioManager.assigned_percentage
 
     
     def initialize_Straegy(self, equity, balances, allocation_cryp, assigned_percentage):
@@ -252,7 +254,7 @@ class MockRealtimeDealer:
         Simulates the setting of entry prices.
         """
         for symbol in self.symbols:
-            self.entry_prices[symbol] = self.data_handler.get_mock_price(symbol)
+            self.entry_prices[symbol] = self.data_handler.get_last_data(symbol)['close']
         self.RiskManager.set_entry_price(self.entry_prices)
         self.logger.info(f"Simulated entry prices: {self.entry_prices}")
 
@@ -266,10 +268,10 @@ class MockRealtimeDealer:
         self.features.pre_run_indicators()
 
         while self.is_running:
-            self.data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
-            
+            new_data = self.data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
+            last_fetch_time = next_fetch_time
             self.equity_balance()
-            self.data_handler.notify_subscribers()
+            self.data_handler.notify_subscribers(new_data)
             self.update_assigned_percentage()
             self.set_entry_prices()
             market_orders = self.Strategy.run_strategy_market()
@@ -308,14 +310,14 @@ class MockRealtimeDealer:
             for symbol in self.symbols:
                 free_balance = self.balances_symbol_fr[symbol]
                 current_price = self.data_handler.get_last_data(symbol)['close']
-                if stop_loss >= current_price:
+                if stop_loss[symbol] >= current_price:
                     self.OrderManager.create_order(
                         symbol=symbol,
                         order_type='sell',
                         amount=free_balance,
                         price=-1
                     )
-                if take_profit <= current_price:
+                if take_profit[symbol] <= current_price:
                     self.OrderManager.create_order(
                         symbol=symbol,
                         order_type='sell',
@@ -348,17 +350,14 @@ class MockRealtimeDealer:
             """
             
             now = datetime.now(timezone.utc)
-            next_fetch_time = self.calculate_next_grid(now)
-            self.monitor_system_health()
+            next_fetch_time = self.data_handler.calculate_next_grid(now)
+            # self.monitor_system_health()
 
             sleep_duration = (next_fetch_time - now).total_seconds() + 1
             self.logger.info(f"Sleeping for {sleep_duration} seconds until {next_fetch_time}")
             time.sleep(sleep_duration)
 
 
-    def calculate_next_grid(self, current_time):
-        next_time = current_time + timedelta(minutes=1)
-        return next_time
 
     def stop(self):
         self.is_running = False
