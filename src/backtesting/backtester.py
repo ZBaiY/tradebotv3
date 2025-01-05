@@ -351,7 +351,7 @@ class MultiAssetBacktester:
         self.trade_logs = {symbol: [] for symbol in self.symbols}
         self.entry_prices = {symbol: -1 for symbol in self.symbols}
 
-    def equity_balance(self, prices = None):
+    def equity_balance(self, prices = None, trade = False):
         """
         Calculate and update equity and balances dynamically based on quantities and prices.
         """
@@ -363,8 +363,8 @@ class MultiAssetBacktester:
             self.balances_symbol[symbol] = self.quantity_symbols[symbol] * price
             total_equity += self.balances_symbol[symbol]
         self.total_equity = total_equity
-        if self.risk_manager: self.risk_manager.update_equity_balance(self.total_equity, self.balances_symbol)
-        if self.strategy: self.strategy.update_equity_balance(self.total_equity, self.balances_symbol)
+        if self.risk_manager: self.risk_manager.update_equity_balance(self.total_equity, self.balances_symbol, trade)
+        if self.strategy: self.strategy.update_equity_balance(self.total_equity, self.balances_symbol, trade)
         return total_equity
     
     def update_assigned_percentage(self):
@@ -515,6 +515,7 @@ class MultiAssetBacktester:
                 trade_log = self.execute_order(symbol, market_order[symbol])
                 self.trade_logs[symbol].append(trade_log)
                 self.balance_history[symbol].append(self.balances_symbol[symbol])
+                self.equity_balance(latest_prices, trade=True)
 
             self.equity_history.append(self.total_equity)
             

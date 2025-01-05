@@ -317,6 +317,8 @@ class RealTimeDataHandler(DataHandler):
             for symbol in self.symbols:
                 try:
                     df_raw = self.get_data_at_time(symbol, time_cursor)
+                    print(df_raw)
+                    print(time_cursor)  # Debugging
                     # Process and save the fetched data
                     if not df_raw.empty:
                         df_time = df_raw.set_index('open_time')
@@ -356,6 +358,8 @@ class RealTimeDataHandler(DataHandler):
             ])
             df['open_time'] = pd.to_datetime(df['open_time'], unit='ms', utc=True)
             df['close_time'] = pd.to_datetime(df['close_time'], unit='ms', utc=True)
+            if df.empty:
+                self.warning_logger.warning(f"Empty DataFrame fetched from {url}")
         except requests.exceptions.RequestException as e:
             self.error_logger.error(f"Error fetching real-time data: {e}")
             return pd.DataFrame()
@@ -412,12 +416,13 @@ class RealTimeDataHandler(DataHandler):
 
     def get_data_at_time(self, symbol, target_time):
         # Calculate the start and end time in milliseconds
+        end_time = int((target_time + self.interval).timestamp() * 1000) - 1
         start_time = int(target_time.timestamp() * 1000)
-        end_time = int((target_time + self.interval-timedelta(seconds=1)).timestamp() * 1000)
         
         # Construct the URL with startTime and endTime
         url = f"{self.base_url}?symbol={symbol}&interval={self.interval_str}&startTime={start_time}&endTime={end_time}"
         df_raw = self.fetch_data(url)
+
         return df_raw
 
 

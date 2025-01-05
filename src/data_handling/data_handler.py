@@ -637,3 +637,24 @@ def update_scaler_with_recent_data(symbols, required_labels, interval, scaler_ty
                 print(f"Updated and saved scaler for {symbol} {label}.")
 
         print(f"Scalers updated for {symbol} with {interval} data.")
+
+def round_down(number, precision=3):
+    
+    # Convert the number to a string to easily access digits
+    num_str = str(number)
+    # Remove the decimal point for easier counting
+    num_str = num_str.replace('.', '')  
+    # Count non-zero digits
+    count = 0
+    index = 0
+    for i, char in enumerate(num_str):
+        if char != '0':
+            count += 1
+            if count == precision:
+                index = i
+                break
+    # Include only up to the fifth non-zero digit
+    rounded_str = num_str[:index+1]
+    # Convert back to float and adjust for the decimal point
+    result = int(rounded_str) / (10 ** (index - (len(str(number).split('.')[0]) - 1)))
+    return result

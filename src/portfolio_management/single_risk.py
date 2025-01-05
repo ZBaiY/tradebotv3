@@ -25,7 +25,9 @@ class SingleRiskManager:
         self.entry_price = -1  # initially no position
         self.equity = equity
         self.position = balance / (equity * assigned_percentage)
-        self.assigned_equity = equity
+        self.assigned_equity = equity * assigned_percentage
+        self.assigned_USDT = self.assigned_equity
+
         self.symbol = symbol
         self.datahandler = datahandler
         self.signal_processor = signal_processor
@@ -38,9 +40,8 @@ class SingleRiskManager:
         self.take_params = config.get("take_params", {})
         self.position_method = config.get("position_method", "static")
         self.postion_params = config.get("position_params", {})
-
-        self.prediction = None
         
+        self.prediction = None
         
         self.required_stop_fields = None
         self.required_take_fields = None
@@ -54,24 +55,35 @@ class SingleRiskManager:
         self.setup_stop()
         self.setup_take()
         self.setup_position()
-
-    def set_position(self, position):
-        self.position = position
-    def set_balance(self, balance):
+    
+    
+    def set_balance(self, balance, trade=False):
+        if trade:
+            diff = balance - self.balance
+            self.assigned_USDT -= diff
         self.balance = balance
+        self.assigned_equity = balance + self.assigned_USDT
+        # print(f"Trade done: {trade}")
+        # print(f"{self.symbol} Balance updated to {self.assigned_equity}")        
+
     def set_assigned_percentage(self, assigned_percentage):
         self.assigned_percentage = assigned_percentage
         self.assigned_equity = self.equity * assigned_percentage
 
     def set_equity(self, equity):
         self.equity = equity
-        self.assigned_equity = self.equity * self.assigned_percentage
+        # self.assigned_equity = self.equity * self.assigned_percentage
+        # print(f"{self.symbol} Equity updated to {self.assigned_equity}")
+        # note: when equity goes up, it does not our liquidation USDT goes up, so no need to update assigned_equity
+        
 
     def calculate_capital(self, buy=False, sell=False):
         if buy:
-            return self.assigned_equity * (1 - self.position)
+            return self.assigned_USDT
         if sell:
-            return self.assigned_equity * self.position
+            return self.balance
+    def calculate_position(self):
+        self.position = self.balance/self.assigned_equity
 
     def read_json_file(self, file_path):
         """

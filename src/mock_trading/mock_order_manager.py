@@ -117,10 +117,13 @@ class MockOrderManager:
 
         # Update balances and trades
         price = self.get_current_price(symbol) if price == -1 else price
+        # 因交易时间差，可能会导致价格变动。注意，需要对amount做一定的round down处理，以避免花更多的钱买入。
         order['price'] = price
         if status == "FILLED": # if market order
             self.update_trade_file(order)
+            input('check order manager 123, trade file')
             self.update_mock_account(order)
+            input('check order manager 125, account file')
         else:
             self.orders[order_id] = order
             self.locking_assets(order) # lock assets if order is not filled
@@ -157,11 +160,15 @@ class MockOrderManager:
             if balances.get(quote_asset, 0) >= cost:
                 balances[quote_asset] -= cost
                 balances[base_asset] = balances.get(base_asset, 0) + amount
+            else:
+                self.logger.warning(f"Insufficient balance to buy {amount} {base_asset} at {price} {quote_asset} each.")
 
         elif order_type == "sell":
             if balances.get(base_asset, 0) >= amount:
                 balances[base_asset] -= amount
                 balances[quote_asset] = balances.get(quote_asset, 0) + amount * (price if price != -1 else 1)
+            else:
+                self.logger.warning(f"Insufficient balance to sell {amount} {base_asset} at {price} {quote_asset} each.")
 
         # Update the account info with the new balances
         account_info['balances'] = [{"asset": asset, "free": str(free), "locked": locked[asset]} for asset, free in balances.items()]

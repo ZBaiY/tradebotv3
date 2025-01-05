@@ -45,7 +45,7 @@ class MultiAssetStrategy(BaseStrategy):
         Run prediction on the given data.
         """
         for symbol in self.symbols:
-            data = self.data_handler.cleaned_data
+            # data = self.data_handler.cleaned_data
             self.strategies[symbol].run_prediction()
             self.signals[symbol] = self.strategies[symbol].make_decision_market()
         return self.signals
@@ -53,21 +53,12 @@ class MultiAssetStrategy(BaseStrategy):
     def get_signals(self):
         return self.signals
     
-    def update_equity_balance(self, equity, balances):
+    def update_equity_balance(self, equity, balances, trade = False):
         self.equity = equity
         self.balances = balances
         for symbol in self.symbols:
             self.strategies[symbol].set_equity(equity)
-            self.strategies[symbol].set_balance(balances[symbol])
-    
-    def update_equity(self, equity):
-        self.equity = equity
-        for symbol in self.symbols:
-            self.strategies[symbol].set_equity(equity)
-    def update_balances(self, balances):
-        self.balances = balances
-        for symbol in self.symbols:
-            self.strategies[symbol].set_balance(balances[symbol])
+            self.strategies[symbol].set_balance(balances[symbol],trade)
 
 
 
@@ -81,7 +72,7 @@ class MultiAssetStrategy(BaseStrategy):
         for symbol in self.symbols:
             self.strategies[symbol].set_equity(equity)
     
-    def update_balances(self, balances):
+    def update_balances(self, balances, trade = False):
         self.balances = balances
         for symbol in self.symbols:
             self.strategies[symbol].set_balances(balances)

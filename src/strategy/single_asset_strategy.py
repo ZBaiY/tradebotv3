@@ -7,9 +7,11 @@ No need to import the BaseStrategy class here.
 # base_model.py
 import sys
 import os
+from decimal import Decimal, ROUND_DOWN
+
 # Add the src directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-
+from src.data_handling.data_handler import round_down
 from src.data_handling.real_time_data_handler import RealTimeDataHandler
 from src.data_handling.historical_data_handler import HistoricalDataHandler, SingleSymbolDataHandler, MultiSymbolDataHandler   
 from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor
@@ -41,6 +43,7 @@ class SingleAssetStrategy:
         self.params = m_config.get('params', {})
         self.balance = 0
         self.assigned_equity = 0
+        self.assigned_USDT = self.assigned_equity
 
         self.decision_model = d_config.get('method', None)
         self.round = d_config.get('round', False)
@@ -106,9 +109,12 @@ class SingleAssetStrategy:
             capital = self.risk_manager.calculate_capital(buy=True)
             fraction = self.risk_manager.get_position_size()
             price = self.data_handler.get_last_data(self.symbol)['close']
-            self.decision['amount'] = fraction * capital/price * 0.99999 # to avoid rounding error
+            self.decision['amount'] = round_down(fraction * capital/price) # to avoid rounding error
             if self.round:
                 self.decision['amount'] = min(round(self.decision['amount']),int(capital/price))
+            if self.decision['amount'] <= 1e-5: # if the amount is too small, hold
+                self.decision['signal'] = "hold"
+                self.decision['amount'] = 0
             # print(capital, fraction, price, self.decision['amount'])
             # input("sigle asset stra 106,Press Enter to continue...")
         elif decis == "sell":
@@ -116,9 +122,12 @@ class SingleAssetStrategy:
             capital = self.risk_manager.calculate_capital(sell=True)
             fraction = self.risk_manager.get_position_size()
             price = self.data_handler.get_last_data(self.symbol)['close']
-            self.decision['amount'] = fraction * capital/price * 0.99999 # to avoid rounding error
+            self.decision['amount'] = round_down(fraction * capital/price) # to avoid rounding error
             if self.round:
                 self.decision['amount'] = min(round(self.decision['amount']),int(capital/price))
+            if self.decision['amount'] <= 1e-5: # if the amount is too small, hold
+                self.decision['signal'] = "hold"
+                self.decision['amount'] = 0
         else:
             self.decision['signal'] = "hold"
             self.decision['amount'] = 0
@@ -146,8 +155,13 @@ class SingleAssetStrategy:
 
     def set_equity(self, equity):
         self.assigned_equity = equity
-    def set_balance(self, balance):
+    def set_balance(self, balance, trade = False):
+        if trade:
+            diff = balance - self.balance
+            self.assigned_USDT -= diff
         self.balance = balance
+        self.assigned_equity = self.balance + self.assigned_USDT
+        
     def set_assigned_percentage(self, assigned_percentage):
         self.assigned_percentage = assigned_percentage
     

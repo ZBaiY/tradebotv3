@@ -41,29 +41,35 @@ class RiskManager:
         self.config = config
         self.risk_managers = {}
 
-    def calculate_position(self):
-        # Calculate position size based on balance, allocation_cryp and assigned percentage
-        for symbol in self.symbols:
-            self.position[symbol] = self.balances[symbol] / (self.equity * self.assigned_percentage[symbol])
-            self.risk_managers[symbol].set_position(self.position[symbol])
+
     
-    def update_equity_balance(self, equity, balances):
+    def update_equity_balance(self, equity, balances, trade = False):
         self.equity = equity
         self.balances = balances
         self.update_equity(equity) 
-        self.update_balances(balances)
-        self.calculate_position()
+        self.update_balances(balances, trade)
+
 
     def set_equity(self, equity):
         self.equity = equity
-    def set_balances(self, balances):
-        self.balances = balances
-    def set_assigned_percentage(self, assigned_percentage):
-        self.assigned_percentage = assigned_percentage
-    def update_balances(self, balances):
+        for symbol in self.symbols:
+            self.risk_managers[symbol].set_equity(self.equity)
+
+    def set_balances(self, balances, trade = False):
         self.balances = balances
         for symbol in self.symbols:
-            self.risk_managers[symbol].set_balance(self.balances[symbol])
+            self.risk_managers[symbol].set_balance(self.balances[symbol], trade)
+
+    def set_assigned_percentage(self, assigned_percentage):
+        self.assigned_percentage = assigned_percentage
+        for symbol in self.symbols:
+            self.risk_managers[symbol].set_assigned_percentage(self.assigned_percentage[symbol])
+
+    def update_balances(self, balances, trade = False):
+        self.balances = balances
+        for symbol in self.symbols:
+            self.risk_managers[symbol].set_balance(self.balances[symbol], trade)
+
     def update_equity(self, equity):
         self.equity = equity
         for symbol in self.symbols:
@@ -92,6 +98,9 @@ class RiskManager:
             self.risk_managers[symbol].calculate_stop_loss()
             self.risk_managers[symbol].calculate_take_profit()
             self.risk_managers[symbol].calculate_position_size(self.equity, self.balances)
+    def calculate_position(self):
+        for symbol in self.symbols:
+            self.risk_managers[symbol].calculate_position()
 
     def request_prediction(self, predictions):
         for symbol in self.symbols:

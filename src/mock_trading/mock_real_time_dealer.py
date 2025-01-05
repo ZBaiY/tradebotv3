@@ -71,13 +71,13 @@ class MockRealtimeDealer:
 
 
 ########################### Block 1: equity, balances, entry prices, asigned capitals ########################################
-    def equity_balance(self):
+    def equity_balance(self, trade=False):
         
         info = self.OrderManager.get_account_info()
         self.balances_str = info['balances']
         self.equity = self.calculate_equity(self.balances_str)
-        if self.RiskManager: self.RiskManager.update_equity_balance(self.equity, self.balances_symbol_fr)
-        if self.Strategy: self.Strategy.update_equity_balance(self.equity, self.balances_symbol_fr)
+        if self.RiskManager: self.RiskManager.update_equity_balance(self.equity, self.balances_symbol_fr, trade)
+        if self.Strategy: self.Strategy.update_equity_balance(self.equity, self.balances_symbol_fr, trade)
         if self.PortfolioManager: self.PortfolioManager.update_equity_balance(self.equity, self.balances_symbol)
         if self.CapitalAllocator: self.CapitalAllocator.set_equity(self.equity)
 
@@ -165,11 +165,11 @@ class MockRealtimeDealer:
         self.Strategy.update_assigned_percentage(self.assigned_percentage)
 
 
-    def equity_balance_tools(self):
+    def equity_balance_tools(self, trade=False):
         self.RiskManager.set_equity(self.equity)
-        self.RiskManager.set_balances(self.balances_symbol_fr)   
+        self.RiskManager.set_balances(self.balances_symbol_fr, trade)   
         self.Strategy.set_equity(self.equity) # Maybe redundant
-        self.Strategy.set_balances(self.balances_symbol_fr)  # Maybe redundant
+        self.Strategy.set_balances(self.balances_symbol_fr, trade)  # Maybe redundant
         self.PortfolioManager.set_equity(self.equity)
         self.PortfolioManager.set_balances(self.balances_symbol)
         self.CapitalAllocator.set_equity(self.equity)
@@ -197,6 +197,7 @@ class MockRealtimeDealer:
         self.initialize_Straegy(self.equity, self.balances_symbol_fr, self.allocation_cryp, self.assigned_percentage)          # Model, RiskManager is initialized here
         self.set_assigned_percentage(self.assigned_percentage) # percentage here is smaller than the 1.0
         self.set_entry_prices()
+        
     
     def initialize_CapitalAllocator(self, equity):
         self.CapitalAllocator = CapitalAllocator(equity)
@@ -268,13 +269,20 @@ class MockRealtimeDealer:
         self.features.pre_run_indicators()
 
         while self.is_running:
+            print("now: ", datetime.now(timezone.utc))
             new_data = self.data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
+            print("next_fetch_time: ", next_fetch_time)
+            print("last_fetch_time: ", last_fetch_time)
+            print("new data: ", new_data)
             last_fetch_time = next_fetch_time
             self.equity_balance()
             self.data_handler.notify_subscribers(new_data)
-            self.update_assigned_percentage()
-            self.set_entry_prices()
+            # self.update_assigned_percentage()  one needs to do rebalance, so only do this per month.
+            self.set_entry_prices() 
+            # input ("mock_real 279, Press Enter to continue...")
             market_orders = self.Strategy.run_strategy_market()
+            print(market_orders)
+            # input ("mock_real 279, Press Enter to continue...")
             # Includes running data processing, feature extraction, model prediction, generating signals, 
             # and applying stop loss/take profit to determine amount to buy/sell.
             """
@@ -305,9 +313,10 @@ class MockRealtimeDealer:
                         amount=signal['amount'],
                         price=-1  # For market order, use current price
                     )
+                    self.equity_balance(trade=True)
             # Execute the predicted signals
 
-            for symbol in self.symbols:
+            """for symbol in self.symbols:
                 free_balance = self.balances_symbol_fr[symbol]
                 current_price = self.data_handler.get_last_data(symbol)['close']
                 if stop_loss[symbol] >= current_price:
@@ -323,7 +332,7 @@ class MockRealtimeDealer:
                         order_type='sell',
                         amount=free_balance,
                         price=-1
-                    )
+                    )"""
 
             # Check for any stop-loss or take-profit conditions and execute orders
             # After executing the orders, update the equity and balances
