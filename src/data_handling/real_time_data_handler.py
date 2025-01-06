@@ -305,20 +305,17 @@ class RealTimeDataHandler(DataHandler):
             return 0
         self.data_logger.info(f"Fetching missing data from {last_fetch_time} to {current_time}")
         # Loop through the missing time range in intervals and fetch data
-        time_cursor = last_fetch_time
+        time_cursor = last_fetch_time + self.interval
         month_tracker = time_cursor.strftime("%Y-%m")
         # print("Fetching missing data started., time_cursor: ", time_cursor)
         while time_cursor < current_time:
-            time_cursor += self.interval
             month_tracker = time_cursor.strftime("%Y-%m")
-            if time_cursor >= current_time:
-                break
             #     time_cursor = current_time  # Ensure not to fetch data beyond the current time
             for symbol in self.symbols:
                 try:
                     df_raw = self.get_data_at_time(symbol, time_cursor)
-                    print(df_raw)
-                    print(time_cursor)  # Debugging
+                    # print(df_raw)
+                    # print(time_cursor)  # Debugging
                     # Process and save the fetched data
                     if not df_raw.empty:
                         df_time = df_raw.set_index('open_time')
@@ -343,8 +340,9 @@ class RealTimeDataHandler(DataHandler):
                     self.error_logger.error(f"Error fetching missing data for {symbol}: {e}")
             current_time = datetime.now(timezone.utc)  # Update the current time, sometimes the loop goes beyond the current time
             current_time = current_time - (current_time - datetime.min.replace(tzinfo=timezone.utc)) % self.interval
- 
+            time_cursor += self.interval
         self.data_logger.info("Fetching missing data completed., time_cursor: %s", time_cursor)
+        self.time_logger.info(f"Last fetch time: {time_cursor- self.interval}")
 
     def fetch_data(self, url):
         try:
@@ -416,8 +414,8 @@ class RealTimeDataHandler(DataHandler):
 
     def get_data_at_time(self, symbol, target_time):
         # Calculate the start and end time in milliseconds
-        end_time = int((target_time + self.interval).timestamp() * 1000) - 1
-        start_time = int(target_time.timestamp() * 1000)
+        start_time = int((target_time - self.interval).timestamp() * 1000)
+        end_time = int(target_time.timestamp() * 1000) - 1
         
         # Construct the URL with startTime and endTime
         url = f"{self.base_url}?symbol={symbol}&interval={self.interval_str}&startTime={start_time}&endTime={end_time}"
@@ -478,7 +476,7 @@ class RealTimeDataHandler(DataHandler):
         else:
             self.data_logger.info("No previous fetch time found in the log.")
         
-        return last_fetch_time
+        return last_fetch_time 
         
 
     def load_params(self, file_path):
@@ -747,12 +745,11 @@ class RealTimeDataHandler(DataHandler):
             tuple: (next_fetch_time, last_fetch_time)
         """
         self.load_initial()  # Load some initial data in the memory
-        last_fetch_time = None
+        last_fetch_time = None # The close time of the last fetched data
         log_file_path = os.path.join(self.log_settings['path'],f"{self.log_settings['file_name2']}_{self.interval_str}.log")
         
         if os.path.exists(log_file_path):
             last_fetch_time = self.load_last_fetch_time()
-            
 
         
         current_time = datetime.now(timezone.utc)
@@ -761,6 +758,11 @@ class RealTimeDataHandler(DataHandler):
         
         if last_fetch_time <= current_time - self.interval:
             self.fetch_missing_data(last_fetch_time)
+        else:
+            sleep_duration = (self.calculate_next_grid(current_time) - current_time).total_seconds() + 1
+            time.sleep(sleep_duration)
+            self.data_logger.info(f"Sleeping for {sleep_duration} seconds until {self.calculate_next_grid(current_time)}")
+            
         current_time = datetime.now(timezone.utc) # Update the current time after fetching missing data
         next_fetch_time = current_time - (current_time - datetime.min.replace(tzinfo=timezone.utc)) % self.interval
         last_fetch_time = next_fetch_time - self.interval

@@ -267,13 +267,13 @@ class MockRealtimeDealer:
         self.logger.info("Starting RealtimeDealer.")
         self.run_initialization()
         self.features.pre_run_indicators()
-
+        # print("now: ", datetime.now(timezone.utc))
+        # print("next_fetch_time: ", next_fetch_time)
+        # print("last_fetch_time: ", last_fetch_time)
+        
         while self.is_running:
-            print("now: ", datetime.now(timezone.utc))
             new_data = self.data_handler.data_fetch_loop(next_fetch_time, last_fetch_time)
-            print("next_fetch_time: ", next_fetch_time)
-            print("last_fetch_time: ", last_fetch_time)
-            print("new data: ", new_data)
+            # print("new data: ", new_data)
             last_fetch_time = next_fetch_time
             self.equity_balance()
             self.data_handler.notify_subscribers(new_data)
@@ -281,7 +281,7 @@ class MockRealtimeDealer:
             self.set_entry_prices() 
             # input ("mock_real 279, Press Enter to continue...")
             market_orders = self.Strategy.run_strategy_market()
-            print(market_orders)
+            # print(market_orders)
             # input ("mock_real 279, Press Enter to continue...")
             # Includes running data processing, feature extraction, model prediction, generating signals, 
             # and applying stop loss/take profit to determine amount to buy/sell.

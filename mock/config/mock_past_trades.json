@@ -26,33 +26,5 @@
         "timeInForce": "GTC",
         "type": "MARKET",
         "side": "sell"
-    },
-    {
-        "symbol": "ETHUSDT",
-        "orderId": 17360895302,
-        "clientOrderId": "mock_17360895302",
-        "transactTime": 1736089530911,
-        "price": 3628.75,
-        "origQty": 0.137,
-        "executedQty": 0.137,
-        "cummulativeQuoteQty": 0,
-        "status": "FILLED",
-        "timeInForce": "GTC",
-        "type": "MARKET",
-        "side": "buy"
-    },
-    {
-        "symbol": "BTCUSDT",
-        "orderId": 17360895391,
-        "clientOrderId": "mock_17360895391",
-        "transactTime": 1736089539153,
-        "price": 97915.2,
-        "origQty": 0.005106,
-        "executedQty": 0.005106,
-        "cummulativeQuoteQty": 0,
-        "status": "FILLED",
-        "timeInForce": "GTC",
-        "type": "MARKET",
-        "side": "buy"
     }
 ]
