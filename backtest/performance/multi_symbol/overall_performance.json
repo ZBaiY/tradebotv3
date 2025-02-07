@@ -1,0 +1,12 @@
+{
+    "Total ROI (%)": 0.0,
+    "Max Drawdown (%)": 0.0,
+    "Sharpe Ratio": NaN,
+    "Symbol ROI (%)": {
+        "BTCUSDT": 0,
+        "ETHUSDT": 0
+    },
+    "Trade Efficiency (%)": 0,
+    "Trade Distribution": {},
+    "Profit Attribution": {}
+}

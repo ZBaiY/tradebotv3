@@ -75,7 +75,8 @@ class SingleRiskManager:
         # self.assigned_equity = self.equity * self.assigned_percentage
         # print(f"{self.symbol} Equity updated to {self.assigned_equity}")
         # note: when equity goes up, it does not our liquidation USDT goes up, so no need to update assigned_equity
-        
+    def set_position(self, position):
+        self.position = position
 
     def calculate_capital(self, buy=False, sell=False):
         if buy:
@@ -161,7 +162,7 @@ class SingleRiskManager:
             self.risk_percentage = self.postion_params.get("risk_percentage", 2)
             self.required_position_fields = position_requires["fixed_fractional"]
         else:
-            raise ValueError("Invalid method for position sizing.")
+            self.position_method = 'none'
         
 
     def request_data(self):
@@ -170,37 +171,37 @@ class SingleRiskManager:
         self.input_stop = self.stop_params
         self.input_take = self.take_params
         self.input_position = self.postion_params
+        if self.required_stop_fields:
+            if "current_price" in self.required_stop_fields:
+                self.input_stop['current_price'] = self.datahandler.get_last_data(self.symbol)['close']
+            if "atr" in self.required_stop_fields:
+                self.input_stop['atr'] = self.feature_extractor.get_last_indicator(self.symbol, 'atr')
+            if "max_price" in self.required_stop_fields:
+                look_back_prices = self.datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
+                self.input_stop['max_price'] = max(look_back_prices)
+            if "entry_price" in self.required_stop_fields:
+                self.input_stop['entry_price'] = self.entry_price
+            if "prediction" in self.required_stop_fields:
+                self.input_stop['prediction'] = self.prediction
 
-        if "current_price" in self.required_stop_fields:
-            self.input_stop['current_price'] = self.datahandler.get_last_data(self.symbol)['close']
-        if "atr" in self.required_stop_fields:
-            self.input_stop['atr'] = self.feature_extractor.get_last_indicator(self.symbol, 'atr')
-        
-        if "max_price" in self.required_stop_fields:
-            look_back_prices = self.datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
-            self.input_stop['max_price'] = max(look_back_prices)
-        if "entry_price" in self.required_stop_fields:
-            self.input_stop['entry_price'] = self.entry_price
-        if "prediction" in self.required_stop_fields:
-            self.input_stop['prediction'] = self.prediction
-        
-        if "current_price" in self.required_take_fields:
-            self.input_take['current_price'] = self.datahandler.get_last_data(self.symbol)['close']
-        if "max_price" in self.required_take_fields:
-            look_back_prices = self.datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
-            self.input_take['max_price'] = max(look_back_prices)
-        if "entry_price" in self.required_take_fields:
-            self.input_take['entry_price'] = self.entry_price
-        if "prediction" in self.required_take_fields:
-            self.input_take['prediction'] = self.prediction
+        if self.required_take_fields:
+            if "current_price" in self.required_take_fields:
+                self.input_take['current_price'] = self.datahandler.get_last_data(self.symbol)['close']
+            if "max_price" in self.required_take_fields:
+                look_back_prices = self.datahandler.get_data_limit(self.symbol, self.trail_lookback)['close']
+                self.input_take['max_price'] = max(look_back_prices)
+            if "entry_price" in self.required_take_fields:
+                self.input_take['entry_price'] = self.entry_price
+            if "prediction" in self.required_take_fields:
+                self.input_take['prediction'] = self.prediction
 
-
-        if "capital" in self.required_position_fields:
-            self.input_position['capital'] = self.equity * self.assigned_percentage * (1-self.position)
-        if "current_price" in self.required_position_fields:
-            self.input_position['current_price'] = self.datahandler.get_last_data(self.symbol)['close']
-        if "prediction" in self.required_position_fields:
-            self.input_position['prediction'] = self.prediction
+        if self.required_position_fields:
+            if "capital" in self.required_position_fields:
+                self.input_position['capital'] = self.equity * self.assigned_percentage * (1-self.position)
+            if "current_price" in self.required_position_fields:
+                self.input_position['current_price'] = self.datahandler.get_last_data(self.symbol)['close']
+            if "prediction" in self.required_position_fields:
+                self.input_position['prediction'] = self.prediction
 
     def request_prediction(self, prediction):
         self.prediction = prediction
@@ -243,7 +244,7 @@ class SingleRiskManager:
         elif self.position_method == "fixed_fractional":
             self.position_size = PositionSizing.fixed_fractional_position_size(**self.input_position)
         else:
-            raise ValueError("Invalid method for position sizing.")
+            self.position_size = 1.0 ### Full position
     
     def calculate_stp(self):
         self.request_data()

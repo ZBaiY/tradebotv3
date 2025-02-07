@@ -88,3 +88,50 @@ class ForTesting(BaseModel):
     
     def evaluate(self, data):
         return data
+
+class MACDModel(BaseModel):
+    def __init__(self, symbol, data_handler, signal_processors, feature_extractor, model_variant, **params):
+        super().__init__(symbol, data_handler, signal_processors, feature_extractor)
+        self.symbol = symbol
+        self.trusted_future = 10
+        self.model_variant = model_variant
+        self.params = params
+        # es_filter = filter.ExponentialSmoothingFilter(alpha=0.3)
+        #filters = [es_filter]
+        filters = []
+        transformers = []
+        if self.data_handler.__class__ == SingleSymbolDataHandler:
+            self.rts_processor =  NonMemSymbolProcessorDataSymbol(self.symbol, self.data_handler, 'close', filters, transformers)
+        else: self.rts_processor = NonMemSymbolProcessor(self.symbol, self.data_handler, 'close', filters, transformers)
+
+    def train(self, data):
+        return data
+    
+    def predict(self, **kwarg):
+        last_price = self.data_handler.get_last_data(self.symbol)['close']
+        prediction = [last_price] * self.forecast_length
+        
+        if type(self.feature_extractor.indicators) == dict:
+            macds = self.feature_extractor.indicators[self.symbol][['macd', 'macd_signal', 'macd_diff']].tail(5)
+        elif type(self.feature_extractor.indicators) == pd.DataFrame:
+            macds = self.feature_extractor.indicators[['macd', 'macd_signal', 'macd_diff']].tail(5)
+        last_diff = macds['macd_diff'].iloc[-1]
+        prev_diff = macds['macd_diff'].iloc[-2]
+        if last_diff and prev_diff:
+            if prev_diff < 0 and last_diff > 0:
+            #"BUY - MACD Histogram turned positive"
+                for i in range(1, self.forecast_length):
+                    prediction[i] = prediction[i-1] * (1 + 0.05)
+
+            elif prev_diff > 0 and last_diff < 0:
+            #   "SELL - MACD Histogram turned negative"
+                for i in range(1, self.forecast_length):
+                    prediction[i] = prediction[i-1] * (1 - 0.05)
+            
+        return prediction
+    
+    def preprocess(self):
+        pass
+    
+    def evaluate(self, data):
+        return data

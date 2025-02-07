@@ -753,7 +753,7 @@ class RealTimeDataHandler(DataHandler):
 
         
         current_time = datetime.now(timezone.utc)
-        if last_fetch_time is None:  # If no last fetch time is found, fetch data for the last 30 intervals
+        if last_fetch_time is None:  # If no last fetch time is found, fetch data for the last window size intervals
             last_fetch_time = current_time - (current_time - datetime.min.replace(tzinfo=timezone.utc)) % self.interval - self.window_size * self.interval
         
         if last_fetch_time <= current_time - self.interval:

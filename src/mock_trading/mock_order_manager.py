@@ -121,9 +121,9 @@ class MockOrderManager:
         order['price'] = price
         if status == "FILLED": # if market order
             self.update_trade_file(order)
-            input('check order manager 123, trade file')
+            # input('check order manager 123, trade file')
             self.update_mock_account(order)
-            input('check order manager 125, account file')
+            # input('check order manager 125, account file')
         else:
             self.orders[order_id] = order
             self.locking_assets(order) # lock assets if order is not filled
@@ -191,7 +191,7 @@ class MockOrderManager:
                     self.update_trade_file(order)
                     self.release_assets(order)
                     self.orders.pop(order["orderId"])
-                    input('check order manager 174')
+                    # input('check order manager 174')
 
                     
                 elif side == 'sell' and market_price >= order["price"]:
@@ -201,7 +201,7 @@ class MockOrderManager:
                     self.update_trade_file(order)
                     self.release_assets(order)
                     self.orders.pop(order["orderId"])
-                    input('check order manager 184')
+                    # input('check order manager 184')
 
     def update_trade_file(self, trade):
         """

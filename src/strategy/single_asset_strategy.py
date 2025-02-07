@@ -15,7 +15,7 @@ from src.data_handling.data_handler import round_down
 from src.data_handling.real_time_data_handler import RealTimeDataHandler
 from src.data_handling.historical_data_handler import HistoricalDataHandler, SingleSymbolDataHandler, MultiSymbolDataHandler   
 from src.signal_processing.signal_processor import SignalProcessor, NonMemSignalProcessor
-from src.models.base_model import ForTesting as TestModel
+import src.models.base_model as BaseModel
 import src.models.ml_model as MLModel
 import src.models.physics_model as PhysModel
 import src.models.statistical_model as StatModel
@@ -65,7 +65,8 @@ class SingleAssetStrategy:
         
         type_parts = self.model_type.split('_')
         model_category = type_parts[0]
-        model_variant = type_parts[1]
+        model_type = type_parts[1]
+        model_variant = type_parts[2]
 
         if model_category == 'ML':
             self.model = MLModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
@@ -73,10 +74,15 @@ class SingleAssetStrategy:
             self.model = StatModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
         elif model_category == 'Phys':
             self.model = PhysModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
-        elif model_category == 'Test':
-            self.model = TestModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
+        elif model_category == 'Base':
+            if model_type == 'Test':
+                self.model = BaseModel.ForTesting(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
             # print("Test model is used.")
-            """Expand the model categories as the tradebot is developed."""
+            elif model_type == 'MACD':
+                self.model = BaseModel.MACDModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
+                """Expand the model categories as the tradebot is developed."""
+            else:
+                raise ValueError(f"please specify the model category: {model_category}")
         else:
             raise ValueError(f"Unknown model category: {model_category}")
         

@@ -279,7 +279,6 @@ class MockRealtimeDealer:
             self.data_handler.notify_subscribers(new_data)
             # self.update_assigned_percentage()  one needs to do rebalance, so only do this per month.
             self.set_entry_prices() 
-            # input ("mock_real 279, Press Enter to continue...")
             market_orders = self.Strategy.run_strategy_market()
             # print(market_orders)
             # input ("mock_real 279, Press Enter to continue...")
@@ -315,7 +314,10 @@ class MockRealtimeDealer:
                     )
                     self.equity_balance(trade=True)
             # Execute the predicted signals
-
+            print("current_price: ", {'ETHUSDT': self.data_handler.get_last_data('ETHUSDT')['close'], 'BTCUSDT':self.data_handler.get_last_data('BTCUSDT')['close']})
+            print("stop_loss: ", stop_loss)
+            print("take_profit: ", take_profit)
+            input ("mock_real 319, Press Enter to continue...")
             """for symbol in self.symbols:
                 free_balance = self.balances_symbol_fr[symbol]
                 current_price = self.data_handler.get_last_data(symbol)['close']

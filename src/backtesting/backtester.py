@@ -158,7 +158,7 @@ class SingleAssetBacktester:
             price = self.data_handler_copy.cleaned_data.iloc[-1]['close']
             self.recalculate_balance(price)  ### this redundancy is due to a design flaw in the risk manager
             self.equity_balance()
-            self.feature_handler.update(self.data_handler_copy.cleaned_data.iloc[-1])
+            self.feature_handler.update(self.data_handler_copy.cleaned_data.iloc[[-1]])
             market_order = self.strategy.run_strategy_market()
             market_order['price'] = price
             
