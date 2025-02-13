@@ -160,7 +160,12 @@ class MockOrderManager:
         if order_type == "buy":
             cost = amount * (price if price != -1 else 1)  # Assume 1 for market price
             if balances.get(quote_asset, 0) >= cost:
-                balances[quote_asset] -= cost * (1+fee)
+                if balances.get(quote_asset, 0) < cost * (1+fee):
+                    amount = amount / (1+fee)   ### for DOGE or others who only works with integer amount, need to round down, fix it future
+                    cost = balances[quote_asset]
+                else:
+                    cost *= (1+fee)
+                balances[quote_asset] -= cost 
                 balances[base_asset] = balances.get(base_asset, 0) + amount
             else:
                 self.logger.warning(f"Insufficient balance to buy {amount} {base_asset} at {price} {quote_asset} each.")
@@ -168,7 +173,7 @@ class MockOrderManager:
         elif order_type == "sell":
             if balances.get(base_asset, 0) >= amount:
                 balances[base_asset] -= amount
-                balances[quote_asset] = balances.get(quote_asset, 0) + amount * (1-fee) * (price if price != -1 else 1)
+                balances[quote_asset] = balances.get(quote_asset, 0) - amount * (1-fee) * (price if price != -1 else 1)
             else:
                 self.logger.warning(f"Insufficient balance to sell {amount} {base_asset} at {price} {quote_asset} each.")
 

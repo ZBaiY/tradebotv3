@@ -3,6 +3,8 @@ The most exciting version, with real time operations
 Update the scalers every one week
 The costum selector, need to develop it for next version
 
+for DOGE or others who only works with integer amount, need to round down, we did it in risk manager, but also need to integrate it when dealing with fees.
+
 # My Trading Bot Architecture
 
 ```mermaid

@@ -121,16 +121,18 @@ class MockRealtimeDealer:
         
         # Reverse order to process trades anti-chronologically (most recent first)
         past_trades = list(reversed(past_trades))
-
         # Get the current balance of the asset (BTC)
-        remaining_qty = self.quantities[symbol]  # Total BTC we currently hold
-        if remaining_qty is None or remaining_qty < threshold:
-            self.logger.info(f"No open position for {symbol}. Returning -1.")
-            return -1
+        asset = symbol.replace('USDT', '')
+        remaining_qty = self.quantities[asset]  # Total BTC we currently hold
         original_qty = remaining_qty  # Keep track of original balance
         total_cost = 0.0
         total_bought_qty = 0.0
         threshold = 1e-5  # Small threshold for rounding errors
+
+        if remaining_qty is None or remaining_qty < threshold:
+            self.logger.info(f"No open position for {symbol}. Returning -1.")
+            return -1
+        
 
         for order in past_trades:
             if order['symbol'] == symbol:
@@ -328,7 +330,7 @@ class MockRealtimeDealer:
             print("current_price: ", {'ETHUSDT': self.data_handler.get_last_data('ETHUSDT')['close'], 'BTCUSDT':self.data_handler.get_last_data('BTCUSDT')['close']})
             print("stop_loss: ", stop_loss)
             print("take_profit: ", take_profit)
-            input ("mock_real 319, Press Enter to continue...")
+            # input ("mock_real 319, Press Enter to continue...")
             """for symbol in self.symbols:
                 free_balance = self.balances_symbol_fr[symbol]
                 current_price = self.data_handler.get_last_data(symbol)['close']
