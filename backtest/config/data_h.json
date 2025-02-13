@@ -1,10 +1,10 @@
 {
-    "interval": "1m",
+    "interval": "15m",
     "file_type": "csv",
     "symbols": ["ETHUSDT", "BTCUSDT"],
     "retry_if_error": 5,
     "memory_setting": {
-        "window_size": 1000,
+        "window_size": 100,
         "memory_limit": 50
     },
     "log_setting": {

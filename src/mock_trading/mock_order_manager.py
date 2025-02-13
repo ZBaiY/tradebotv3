@@ -10,6 +10,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 
 from src.data_handling.real_time_data_handler import LoggingHandler
 
+fee = 0.001
+
 
 class MockOrderManager:
     def __init__(self, log_dir='../../mock/logs', log_file='mock_order_manager.log'):
@@ -158,7 +160,7 @@ class MockOrderManager:
         if order_type == "buy":
             cost = amount * (price if price != -1 else 1)  # Assume 1 for market price
             if balances.get(quote_asset, 0) >= cost:
-                balances[quote_asset] -= cost
+                balances[quote_asset] -= cost * (1+fee)
                 balances[base_asset] = balances.get(base_asset, 0) + amount
             else:
                 self.logger.warning(f"Insufficient balance to buy {amount} {base_asset} at {price} {quote_asset} each.")
@@ -166,7 +168,7 @@ class MockOrderManager:
         elif order_type == "sell":
             if balances.get(base_asset, 0) >= amount:
                 balances[base_asset] -= amount
-                balances[quote_asset] = balances.get(quote_asset, 0) + amount * (price if price != -1 else 1)
+                balances[quote_asset] = balances.get(quote_asset, 0) + amount * (1-fee) * (price if price != -1 else 1)
             else:
                 self.logger.warning(f"Insufficient balance to sell {amount} {base_asset} at {price} {quote_asset} each.")
 

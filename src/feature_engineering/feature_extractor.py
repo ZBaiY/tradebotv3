@@ -898,7 +898,95 @@ class SingleSymbolFeatureExtractor:
             self.selections = self.indicators.columns.tolist()
 
         self.indicators = self.indicators[self.selections]
+    
+
+    ####### the following function is only used for indicator testings #######
+    def load_full_range(self):
+        data = self.data_handler.get_data(clean=True)
+        momentum_df = pd.DataFrame(index=data.index)
+
         
+        if self.rsi_period is not None:
+            # Add RSI to the new DataFrame
+            momentum_df['rsi'] = ta.momentum.RSIIndicator(
+                close=data['close'], window=self.rsi_period).rsi().bfill().ffill()
+            rsi_h = pd.DataFrame(index=data.index)
+            rsi_h['change'] = data['close'].diff()
+            rsi_h['gain'] = rsi_h['change'].apply(lambda x: x if x > 0 else 0)
+            rsi_h['loss'] = rsi_h['change'].apply(lambda x: -x if x < 0 else 0)
+
+        # Add MACD (Moving Average Convergence Divergence)
+        if self.macd_short is not None:
+            macd = ta.trend.MACD(
+                close=data['close'],
+                window_slow=self.macd_long,
+                window_fast=self.macd_short,
+                window_sign=self.macd_signal
+            )
+            momentum_df['macd'] = macd.macd().bfill().ffill()
+            momentum_df['macd_signal'] = macd.macd_signal().bfill().ffill()
+            momentum_df['macd_diff'] = macd.macd_diff().bfill().ffill()
+
+        # Add Stochastic Oscillator
+        if self.stoch_period is not None:
+            stochastic = ta.momentum.StochasticOscillator(
+                high=data['high'], 
+                low=data['low'], 
+                close=data['close'], 
+                window=self.stoch_period, 
+                smooth_window=self.stoch_smooth_k
+            )
+            momentum_df['stoch_k'] = stochastic.stoch().bfill().ffill()
+            momentum_df['stoch_d'] = stochastic.stoch_signal().bfill().ffill()
+        volatility_df = pd.DataFrame(index=data.index)
+        
+        if self.bollinger_period is not None:
+            # Bollinger Bands
+            bollinger = ta.volatility.BollingerBands(close=data['close'], window=self.bollinger_period, window_dev=self.bollinger_std)
+            volatility_df['bollinger_mavg'] = bollinger.bollinger_mavg().bfill().ffill()  # Middle band (SMA)
+            volatility_df['bollinger_upper'] = bollinger.bollinger_hband().bfill().ffill()
+            volatility_df['bollinger_lower'] = bollinger.bollinger_lband().bfill().ffill()
+            
+        if self.atr_period is not None:
+            # Average True Range (ATR)
+            volatility_df['atr'] = ta.volatility.AverageTrueRange(
+                high=data['high'], low=data['low'], close=data['close'], window=self.atr_period
+            ).average_true_range().bfill().ffill()
+        volume_df = pd.DataFrame(index=data.index)
+        if self.vwap_period is not None:
+            volume_df['vwap'] = ta.volume.VolumeWeightedAveragePrice(
+                high=data['high'], low=data['low'], close=data['close'], volume=data['volume'], 
+                window=self.vwap_period
+            ).volume_weighted_average_price().bfill().ffill()
+
+        if self.obv_lookback is not None:
+            volume_df['obv'] = ta.volume.OnBalanceVolumeIndicator(
+                close=data['close'], volume=data['volume']
+            ).on_balance_volume().bfill().ffill()
+        trend_df = pd.DataFrame(index=data.index)
+        
+        if self.sma_period is not None:
+            # Simple Moving Average (SMA)
+            trend_df['sma'] = ta.trend.SMAIndicator(
+                close=data['close'], window=self.sma_period
+            ).sma_indicator().bfill().ffill()
+            
+        if self.ema_period is not None:
+            # Exponential Moving Average (EMA)
+            trend_df['ema'] = ta.trend.EMAIndicator(
+                close=data['close'], window=self.ema_period
+            ).ema_indicator().bfill().ffill()
+            
+        if self.adx_period is not None:
+            # Average Directional Index (ADX)
+            trend_df['adx'] = ta.trend.ADXIndicator(
+                high=data['high'], low=data['low'], close=data['close'], window=self.adx_period
+            ).adx().bfill().ffill()
+            
+        custom_df = None
+
+        self.indicators = pd.concat([momentum_df, volatility_df, volume_df, trend_df, custom_df], axis=1)
+
 
     def update(self, new_data):
         new_datetime = new_data.index

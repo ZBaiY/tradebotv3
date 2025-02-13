@@ -7,12 +7,12 @@ import pandas as pd
 
 
 from src.backtesting.backtester import SingleAssetBacktester, MultiAssetBacktester
-
+"""
 if __name__ == '__main__':
     backtester = MultiAssetBacktester()
     backtester.run_initialization()
     backtester.run_backtest()
-    
+"""    
     
     # backtester.run_backtest()
     # equity_history = backtester.equity_history
@@ -39,7 +39,7 @@ if __name__ == '__main__':
     # plt.plot(equity_history)
     # plt.show()
 
-"""
+
 if __name__ == '__main__':
     backtester_BTCUSDT = SingleAssetBacktester()
     backtester_BTCUSDT.run_initialization()
@@ -67,4 +67,3 @@ if __name__ == '__main__':
 
     plt.plot(equity_history)
     plt.show()
-"""

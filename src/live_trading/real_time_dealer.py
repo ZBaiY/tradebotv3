@@ -124,43 +124,54 @@ class RealtimeDealer:
         """
         Calculate the weighted average entry price for a current open position of a specific symbol.
         :param symbol: The symbol to calculate the entry price for (e.g., 'BTCUSDT').
-        :return: The average entry price or None if no open position.
+        :return: The average entry price or current market price if insufficient trade history.
         """
         past_trades = self.OrderManager.fetch_past_trades_from_api()
-        total_bought_qty = 0.0
-        total_cost = 0.0
-        remaining_qty = 0.0
+        
+        # Reverse order to process trades anti-chronologically (most recent first)
+        past_trades = list(reversed(past_trades))
 
-        for order_id, order in past_trades.items():
-            # Only consider trades for the given symbol that are fully filled
-            if order['symbol'] == symbol and order['status'] == "FILLED":
+        # Get the current balance of the asset (BTC)
+        remaining_qty = self.balances_symbol[symbol]  # Total BTC we currently hold
+        if remaining_qty is None or remaining_qty < threshold:
+            self.logger.info(f"No open position for {symbol}. Returning -1.")
+            return -1
+        original_qty = remaining_qty  # Keep track of original balance
+        total_cost = 0.0
+        total_bought_qty = 0.0
+        threshold = 1e-5  # Small threshold for rounding errors
+
+        for order in past_trades:
+            if order['symbol'] == symbol:
                 trade_qty = float(order['executedQty'])
                 trade_price = float(order['price'])
                 trade_side = order['side']  # 'BUY' or 'SELL'
 
-                if trade_side == 'BUY':
-                    total_cost += trade_qty * trade_price  # Accumulate the cost
-                    total_bought_qty += trade_qty  # Accumulate the quantity bought
-                    remaining_qty += trade_qty  # Add to the open position
-                elif trade_side == 'SELL':
-                    remaining_qty -= trade_qty  # Reduce the open position by the sold quantity
-                    # If more quantity is sold than was bought, reset total cost and quantities
-                    if remaining_qty < 0:
-                        remaining_qty = 0
-                        total_cost = 0
-                        total_bought_qty = 0
+                if trade_side == 'buy':
+                    total_cost += trade_qty * trade_price  # Accumulate cost
+                    total_bought_qty += trade_qty  # Accumulate bought quantity
+                    remaining_qty -= trade_qty  # Reduce the amount still needing reconciliation
+                elif trade_side == 'sell':
+                    remaining_qty += trade_qty  # Selling increases the balance we need to account for
 
-                if total_cost>=self.balances_symbol_fr[symbol]:
+                # Stop early when the accounted amount matches the balance within a small margin
+                if remaining_qty < -1 * threshold:
+                    self.logger.warning(f"Trade log inconsistency detected for {symbol}. "
+                                        f"Remaining quantity dropped below zero. Stopping calculation.")
                     break
-
-        # Calculate weighted average entry price based on remaining open position
-        if remaining_qty > 0:
+                if remaining_qty < threshold:
+                    break
+        # Calculate weighted average entry price
+        if total_bought_qty > threshold:
             weighted_entry_price = total_cost / total_bought_qty
             self.logger.info(f"Calculated entry price for {symbol}: {weighted_entry_price}")
             return weighted_entry_price
         else:
-            self.logger.info(f"No open position found for {symbol}. Entry price calculation not applicable.")
-            return 0.0
+            # Fallback: Use current market price if no valid entry price is found
+            market_price = self.data_handler.get_last_data(symbol)['close']
+            self.logger.info(f"Using market price as fallback for {symbol}: {market_price}")
+            return market_price
+       
 
     def set_assigned_percentage(self, assigned_percentage):
         self.assigned_percentage = assigned_percentage

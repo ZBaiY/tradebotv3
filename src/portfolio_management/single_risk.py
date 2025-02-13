@@ -326,7 +326,7 @@ class StopLoss:
         :return: Stop-loss price.
         """
         entry_price = kwargs.get("entry_price", None)
-        if entry_price is None:
+        if entry_price is None or entry_price <= 1e-6:
             return -1
         stop_loss_price = entry_price * (1 - stop_loss_percent)
         return max(stop_loss_price,0)
@@ -353,7 +353,7 @@ class StopLoss:
         atr = kwargs.get("atr", None)
         max_price = kwargs.get("max_price", None)
         entry_price = kwargs.get("entry_price", None)
-        if current_price is None or atr is None or max_price is None or entry_price is None:
+        if current_price is None or atr is None or max_price is None or entry_price is None or entry_price <= 1e-6:
             return -1
         if trend_dir == -1:
             stop_loss = StopLoss.atr_stop_loss(current_price, atr, atr_multiplier)
@@ -403,7 +403,7 @@ class TakeProfit:
         entry_price = kwargs.get("entry_price", None)
         max_price = kwargs.get("max_price", None)
 
-        if entry_price <= 0 or max_price <= 0 or trail_percent <= 0:
+        if entry_price <= 1e-6 or max_price <= 0 or trail_percent <= 0:
             return -1
         if max_price < entry_price:
             return -1

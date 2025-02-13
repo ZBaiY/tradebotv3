@@ -23,6 +23,8 @@ import numpy as np
 import gc
 from tqdm import tqdm
 
+fee = 0.001
+
 class SingleAssetBacktester:
     """
     A backtester for single-asset trading strategies.
@@ -51,6 +53,7 @@ class SingleAssetBacktester:
         # print(self.data_handler.get_data().head())
         self.data_handler_copy = self.data_handler.copy()
         self.feature_handler = feature_handler if feature_handler else SingleSymbolFeatureExtractor(self.symbol, self.data_handler_copy)
+        self.interval_str = self.data_handler.interval_str
         self.window_size = self.data_handler.window_size
         self.strategy = strategy
         self.model_category = None
@@ -89,7 +92,8 @@ class SingleAssetBacktester:
         USDT_balance = self.equity - self.balance
         self.balance += quantity * price
         self.asset_quantity += quantity
-        USDT_balance -= quantity * price
+        USDT_balance -= quantity * price + abs(quantity) * price * fee
+        USDT_balance = max(0, USDT_balance) # might have rounding error
         self.equity = self.balance + USDT_balance
 
 
@@ -213,11 +217,20 @@ class SingleAssetBacktester:
 
 
     def calculate_entry_price(self):
+        """
+        Calculate the weighted average entry price based on the asset quantity and trade log.
         
+        :return: The average entry price, -1 if no position, or 0 if the position is fully closed.
+        """
         total_cost = 0.0
-        total_quantity = 0.0
+        total_quantity = self.asset_quantity  # Start with the actual asset quantity
+        threshold = 1e-6  # Small value to handle floating-point precision errors
 
-        # Process the trade log anti-chronologically
+        # If the asset quantity is None or too small, return -1 (no open position)
+        if total_quantity is None or total_quantity < threshold:
+            return -1
+
+        # Process the trade log anti-chronologically (most recent trades first)
         for trade in reversed(self.trade_log):
             trade_qty = trade["quantity"]
             trade_price = trade["price"]
@@ -225,18 +238,23 @@ class SingleAssetBacktester:
 
             if trade_type == "buy":
                 total_cost += trade_qty * trade_price
-                total_quantity += trade_qty
+                total_quantity -= trade_qty  # Adjust quantity needing reconciliation
             elif trade_type == "sell":
-                total_quantity -= trade_qty
-                # If position is fully closed, terminate early
-                if total_quantity <= 0:
-                    total_quantity = 0
-                    total_cost = 0
-                    break
+                total_quantity += trade_qty  # Selling increases the amount needing reconciliation
+
+            # Stop early if we have reconciled the asset quantity
+            if abs(total_quantity) < threshold:
+                break
+
+            # If total_quantity goes negative, log a warning and stop
+            if total_quantity < 0:
+                # print("Trade log inconsistency detected. Remaining quantity dropped below zero. Stopping calculation.")
+                break
 
         # Calculate and return the weighted average entry price
         if total_quantity > 0:
-            return total_cost / total_quantity
+            weighted_entry_price = total_cost / total_quantity
+            return weighted_entry_price
         else:
             return 0.0
 
@@ -250,8 +268,8 @@ class SingleAssetBacktester:
             order = 'hold'
             quantity = 0
         if order == 'buy':
-            if quantity * price > self.equity-self.balance:
-                quantity = (self.equity-self.balance)/price
+            if quantity * price > (self.equity-self.balance)/(1+fee):
+                quantity = (self.equity-self.balance)/price/(1+fee)
             quantity = abs(quantity)
         elif order == 'sell':
             if quantity * price > self.balance:
@@ -542,15 +560,18 @@ class MultiAssetBacktester:
 
         if order_type == "buy":
             cost = amount * price
-            if self.balances_usdt >= cost:
-                self.balances_usdt -= cost
-                self.quantity_symbols[symbol] += amount
-                self.balances_symbol[symbol] = self.quantity_symbols[symbol] * price
+            if self.balances_usdt < cost/(1+fee):
+                amount = self.balances_usdt/price/(1+fee)
+                cost = self.balances_usdt
+            self.balances_usdt -= cost
+            self.quantity_symbols[symbol] += amount
+            self.balances_symbol[symbol] = self.quantity_symbols[symbol] * price
         elif order_type == "sell":
-            if self.quantity_symbols[symbol] >= amount:
-                self.balances_usdt += amount * price
-                self.quantity_symbols[symbol] -= amount
-                self.balances_symbol[symbol] = self.quantity_symbols[symbol] * price
+            if self.quantity_symbols[symbol] < amount:
+                amount = self.quantity_symbols[symbol]
+            self.balances_usdt += amount * price * (1-fee)
+            self.quantity_symbols[symbol] -= amount
+            self.balances_symbol[symbol] = self.quantity_symbols[symbol] * price
         
         return {
             "symbol": symbol,
@@ -560,33 +581,63 @@ class MultiAssetBacktester:
             "date": self.data_handler.get_last_data(symbol).name,
             "balance": self.balances_symbol[symbol]}
 
-    def calculate_entry_price(self, symbol):
+    def cal_entry_prices(self):
+        """
+        Calculates and sets the weighted average entry prices for all symbols.
+        Uses self.quantity_symbols to determine current asset holdings.
+        
+        Updates self.entry_prices as a dictionary {symbol: price}.
+        If a symbol has no position, assigns -1.
+        If a symbol's trade log is missing or its position is fully closed, assigns 0.0.
+        """
+        self.entry_prices = {}  # Ensure dictionary is initialized
 
-        total_cost = 0.0
-        total_quantity = 0.0
+        # Check if quantity tracking is available
+        if not hasattr(self, 'quantity_symbols') or not self.quantity_symbols:
+            print("Warning: No asset quantities found. Entry prices cannot be calculated.")
+            return  
 
-        # Process the trade log for the specific symbol anti-chronologically
-        for trade in reversed(self.trade_logs[symbol]):
-            trade_qty = trade["amount"]
-            trade_price = trade["price"]
-            trade_type = trade["type"]  # 'buy' or 'sell'
+        # Process each symbol separately
+        for symbol in self.quantity_symbols.keys():
+            total_cost = 0.0
+            total_quantity = self.quantity_symbols.get(symbol, 0.0)  # Get the current asset quantity
+            threshold = 1e-6  # Small value to handle floating-point precision errors
 
-            if trade_type == "buy":
-                total_cost += trade_qty * trade_price
-                total_quantity += trade_qty
-            elif trade_type == "sell":
-                total_quantity -= trade_qty
-                # If position is fully closed, terminate early
-                if total_quantity <= 0:
-                    total_quantity = 0
-                    total_cost = 0
-                    break
+            # If the asset quantity is None or too small, set entry price to -1 (no position)
+            if total_quantity is None or total_quantity < threshold:
+                print(f"Warning: No position for {symbol}. Entry price set to -1.")
+                self.entry_prices[symbol] = -1
+                continue  # Skip further processing for this symbol
 
-        # Calculate and return the weighted average entry price
-        if total_quantity > 0:
-            return total_cost / total_quantity
-        else:
-            return 0.0
+            # If there is no trade history for this symbol, set to default 0.0
+            if symbol not in self.trade_logs or not self.trade_logs[symbol]:
+                print(f"Info: No trade history available for {symbol}. Using default entry price.")
+                self.entry_prices[symbol] = 0.0
+                continue  
+
+            # Process the trade log for the symbol anti-chronologically (most recent first)
+            for trade in reversed(self.trade_logs[symbol]):
+                trade_qty = trade["amount"]  # Ensure consistency with original single-symbol version
+                trade_price = trade["price"]
+                trade_type = trade["type"]  # 'buy' or 'sell'
+
+                if trade_type == "buy":
+                    total_cost += trade_qty * trade_price
+                    total_quantity += trade_qty  # Accumulate bought quantity
+                elif trade_type == "sell":
+                    total_quantity -= trade_qty  # Reduce available quantity
+
+                    # If the position is fully closed, terminate early
+                    if total_quantity <= 0:
+                        total_quantity = 0
+                        total_cost = 0
+                        break
+
+            # Calculate and store the weighted average entry price
+            if total_quantity > 0:
+                self.entry_prices[symbol] = total_cost / total_quantity
+            else:
+                self.entry_prices[symbol] = 0.0  # Position fully closed
 
 
     def log_state(self, current_date):
