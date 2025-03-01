@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 
 class HistoricalDataHandler(DataHandler):
-    def __init__(self, source_file = 'config/source.json', json_file=None, cleaner_file=None, checker_file=None):
+    def __init__(self, source_file = 'config/source.json', json_file='config/fetch_data.json', cleaner_file=None, checker_file=None):
         """
         Initializes the historical data handler with source details, frequency, and optional JSON parameter files.
         :param source: Dictionary containing 'base_url' and 'endpoint'.
@@ -104,11 +104,11 @@ class HistoricalDataHandler(DataHandler):
         if end_date is None:
             end_date = datetime.now(pytz.UTC).strftime('%Y-%m-%d')
         if raw:
-            return f'data/historical/for_train/raw/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+            return f'data/historical/raw/for_train/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
         if rescaled:
-            return f'data/historical/for_train/rescaled/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+            return f'data/historical/rescaled/for_train/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
         if process:
-            return f'data/historical/for_train/processed/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
+            return f'data/historical/processed/for_train/{symbol}_{start_date}_{end_date}_{interval}.{file_type}'
         else:
             print("Please specify the type of data to save.")
     
@@ -275,7 +275,7 @@ class HistoricalDataHandler(DataHandler):
             first_chunk = False
 
             pbar.update(len(cleaned_df))
-            current_start_date = (pd.to_datetime(cleaned_df['open_time'].iloc[-1], utc=True) + pd.Timedelta(**{unit: interval_value})).strftime('%Y-%m-%d %H:%M:%S')
+            current_start_date = (pd.to_datetime(cleaned_df.index[-1], utc=True) + pd.Timedelta(**{unit: interval_value})).strftime('%Y-%m-%d %H:%M:%S')
             if pd.to_datetime(current_start_date, utc=True) >= end_dt:
                 break
 
@@ -337,7 +337,8 @@ class HistoricalDataHandler(DataHandler):
             first_chunk = False
 
             pbar.update(len(df_chunk))
-            current_start_date = (pd.to_datetime(df_chunk['open_time'].iloc[-1], utc=True) + pd.Timedelta(**{unit: interval_value})).strftime('%Y-%m-%d %H:%M:%S')
+            
+            current_start_date = (pd.to_datetime(df_chunk.index[-1], utc=True) + pd.Timedelta(**{unit: interval_value})).strftime('%Y-%m-%d %H:%M:%S')
             if pd.to_datetime(current_start_date, utc=True) >= end_dt:
                 break
 
@@ -411,7 +412,7 @@ class HistoricalDataHandler(DataHandler):
             first_chunk = False
 
             pbar.update(len(rescaled_df))
-            current_start_date = (pd.to_datetime(rescaled_df['open_time'].iloc[-1], utc=True) +
+            current_start_date = (pd.to_datetime(rescaled_df.index[-1], utc=True) +
                                 pd.Timedelta(**{unit: int(interval[:-1])})).strftime('%Y-%m-%d %H:%M:%S')
 
             if pd.to_datetime(current_start_date, utc=True) >= end_dt:
