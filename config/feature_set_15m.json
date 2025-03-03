@@ -1,8 +1,8 @@
 {
-    "rsi_period": 5,
-    "macd_short": 3,
-    "macd_long": 10,
-    "macd_signal": 16,
+    "rsi_period": 3,
+    "macd_short": 15,
+    "macd_long": 30,
+    "macd_signal": 20,
     "stoch_period": 14,
     "stoch_smooth_k": 3,
     "stoch_smooth_d": 3,
