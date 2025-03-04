@@ -1,0 +1,43 @@
+{
+    "limit": 500,
+    "rate_limit_delay": 1,
+    "file_type": "csv",
+    "rescale": "standard",
+    "symbols": [
+        {
+            "symbol": "BTCUSDT",
+            "intervals": [
+                {"interval": "4h", "start_date": "2022-01-01", "clean": true, "raw": true, "rescale": true},
+                {"interval": "15m", "start_date": "2024-09-24", "clean": true, "raw": true, "rescale": true}
+            ]
+        },
+        {
+            "symbol": "ETHUSDT",
+            "intervals": [
+                {"interval": "4h", "start_date": "2022-01-01", "clean": true, "raw": true, "rescale": true},
+                {"interval": "15m", "start_date": "2024-09-24", "clean": true, "raw": true, "rescale": true}
+            ]
+        },
+        {
+            "symbol": "ADAUSDT",
+            "intervals": [
+                {"interval": "4h", "start_date": "2022-01-01", "clean": true, "raw": true, "rescale": true},
+                {"interval": "15m", "start_date": "2024-09-24", "clean": true, "raw": true, "rescale": true}
+            ]
+        },
+        {
+            "symbol": "SOLUSDT",
+            "intervals": [
+                {"interval": "4h", "start_date": "2022-01-01", "clean": true, "raw": true, "rescale": true},
+                {"interval": "15m", "start_date": "2024-09-24", "clean": true, "raw": true, "rescale": true}
+            ]
+        },
+        {
+            "symbol": "XTZUSDT",
+            "intervals": [
+                {"interval": "4h", "start_date": "2022-01-01", "clean": true, "raw": true, "rescale": true},
+                {"interval": "15m", "start_date": "2024-09-24", "clean": true, "raw": true, "rescale": true}
+            ]
+        }
+    ]
+}

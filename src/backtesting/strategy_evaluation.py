@@ -89,7 +89,49 @@ class SingleAssetStrategyEvaluator:
             'Trade Utilization (%)': trade_utilization,
             'Profit Attribution': profit_attribution,
         }
+    def calculate_extended_metrics(self):
+        """
+        Calculates extended performance metrics:
+         - Risk Reward Ratio: ratio of average win to average loss (absolute values)
+         - Win Rate: % of trades with a positive return
+         - Total Trades: count of completed trades
+         - Largest Win Trade: maximum trade return
+         - Largest Lost Trade: most negative trade return
+         - Sortino Ratio: risk-adjusted performance using downside volatility
 
+        Assumes that a completed trade is marked by a 'sell' order.
+        """
+        # Ensure trade returns are calculated
+        self.calculate_trade_returns()
+        # Filter for completed trades (assuming long trades only)
+        trades = [trade for trade in self.trade_log if trade['order'] == 'sell']
+        total_trades = len(trades)
+        
+        # Calculate win and loss trades
+        win_trades = [trade for trade in trades if trade['return'] > 0]
+        loss_trades = [trade for trade in trades if trade['return'] <= 0]
+        
+        win_rate = (len(win_trades) / total_trades * 100) if total_trades > 0 else 0
+        
+        # Calculate average winning and losing returns
+        avg_win = np.mean([trade['return'] for trade in win_trades]) if win_trades else np.nan
+        avg_loss = np.mean([trade['return'] for trade in loss_trades]) if loss_trades else np.nan
+        
+        # Risk Reward Ratio is the ratio of average win to average loss (absolute value)
+        risk_reward_ratio = (avg_win / abs(avg_loss)) if (loss_trades and avg_loss != 0) else np.nan
+        
+        # Determine the largest win and the largest loss (most negative trade)
+        largest_win = np.max([trade['return'] for trade in win_trades]) if win_trades else np.nan
+        largest_loss = np.min([trade['return'] for trade in loss_trades]) if loss_trades else np.nan
+
+        return {
+            'Risk Reward Ratio': risk_reward_ratio,
+            'Win Rate %': win_rate,
+            'Total Trades': total_trades,
+            'Largest Win Trade %': largest_win,
+            'Largest Loss Trade %': largest_loss,
+            'Sortino Ratio': self.get_sortino_ratio()
+        }
     def get_roi(self):
         net_profit = self.equity_history[-1] - self.initial_balance
         return (net_profit / self.initial_balance) * 100
@@ -116,6 +158,25 @@ class SingleAssetStrategyEvaluator:
 
         interval_risk_free_rate = (1 + risk_free_rate) ** (1 / annualization_factor) - 1
         return (mean_returns - interval_risk_free_rate) / std_returns if std_returns > 0 else np.nan
+    def get_sortino_ratio(self, risk_free_rate=0.02):
+        """
+        Calculates the Sortino Ratio using only downside volatility.
+        """
+        returns = np.diff(self.equity_history) / np.array(self.equity_history[:-1])
+        mean_returns = np.mean(returns)
+        
+        annualization_factor = {
+            '1d': 252,
+            '1h': 252 * 24,
+            '15m': 252 * 24 * 4
+        }.get(self.interval_str, 1)
+        target = (1 + risk_free_rate) ** (1 / annualization_factor) - 1
+        
+        # Only consider returns below the target (downside)
+        downside_returns = np.array([r - target for r in returns if r < target])
+        downside_std = np.std(downside_returns) if downside_returns.size > 0 else 0
+        
+        return (mean_returns - target) / downside_std if downside_std > 0 else np.nan
 
     def get_position_efficiency(self):
         actual_profit = sum(trade['return'] for trade in self.trade_log if 'return' in trade)
