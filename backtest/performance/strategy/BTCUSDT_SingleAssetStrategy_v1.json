@@ -1,8 +1,10 @@
 {
-    "ROI (%)": 0.0,
-    "Max Drawdown (%)": 0.0,
-    "Sharpe Ratio": NaN,
-    "Position Efficiency (%)": 0,
-    "Trade Utilization (%)": 100.0,
-    "Profit Attribution": {}
+    "ROI (%)": 58.09983757457366,
+    "Max Drawdown (%)": 26.017721440121854,
+    "Sharpe Ratio": 0.0047898862655778186,
+    "Position Efficiency (%)": 1.0575481449968918e-05,
+    "Trade Utilization (%)": 52.98935436440658,
+    "Profit Attribution": {
+        "BTCUSDT": 235.36013223281094
+    }
 }

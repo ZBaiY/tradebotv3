@@ -75,14 +75,19 @@ class SingleAssetStrategy:
         elif model_category == 'Phys':
             self.model = PhysModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
         elif model_category == 'Base':
-            if model_type == 'Test':
-                self.model = BaseModel.ForTesting(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
-            # print("Test model is used.")
-            elif model_type == 'MACD':
-                self.model = BaseModel.MACDModel(self.symbol, self.data_handler, self.signal_processors, self.feature_extractor, model_variant, **self.params)
-                """Expand the model categories as the tradebot is developed."""
-            else:
-                raise ValueError(f"please specify the model category: {model_category}")
+            model_factory = {
+                'Test': BaseModel.ForTesting,
+                'MACD': BaseModel.MACDModel,
+                'MACDwADX': BaseModel.MACDwADX,
+                'RSIwADX': BaseModel.RSIwADX
+                # Add more models as needed.
+            }
+            try:
+                model_class = model_factory[model_type]
+                self.model = model_class(self.symbol, self.data_handler, self.signal_processors,
+                                        self.feature_extractor, model_variant, **self.params)
+            except KeyError:
+                raise ValueError(f"Model type '{model_type}' is not supported. Available types: {list(model_factory.keys())}")
         else:
             raise ValueError(f"Unknown model category: {model_category}")
         

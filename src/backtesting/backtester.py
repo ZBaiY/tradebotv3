@@ -141,7 +141,7 @@ class SingleAssetBacktester:
         self.equity_history.append(self.equity)
         self.capital_full_position.append(self.equity)
         self.asset_full_position.append(self.asset_quantity)
-        i = 100
+        i = 10*self.window_size
         backtest_len = len(self.data_handler.cleaned_data)-i
         start_date = self.data_handler.cleaned_data.index[0]
         end_date = self.data_handler.cleaned_data.index[-1]

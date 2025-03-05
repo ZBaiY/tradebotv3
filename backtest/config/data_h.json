@@ -4,7 +4,7 @@
     "symbols": ["ETHUSDT", "BTCUSDT"],
     "retry_if_error": 5,
     "memory_setting": {
-        "window_size": 100,
+        "window_size": 200,
         "memory_limit": 50
     },
     "log_setting": {

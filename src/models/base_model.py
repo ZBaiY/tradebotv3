@@ -135,3 +135,147 @@ class MACDModel(BaseModel):
     
     def evaluate(self, data):
         return data
+
+class MACDwADX(BaseModel):
+    def __init__(self, symbol, data_handler, signal_processors, feature_extractor, model_variant, **params):
+        super().__init__(symbol, data_handler, signal_processors, feature_extractor)
+        self.symbol = symbol
+        self.trusted_future = 10
+        self.model_variant = model_variant
+        self.params = params
+        # Set the thresholds as attributes (defaults: macd_threshold=0.0, adx_threshold=45)
+        self.macd_threshold = params.get("macd_threshold", 0.0)
+        self.adx_threshold = params.get("adx_threshold", 45)
+        # Example: you can add more parameters as needed.
+        
+        filters = []
+        transformers = []
+        if self.data_handler.__class__ == SingleSymbolDataHandler:
+            self.rts_processor = NonMemSymbolProcessorDataSymbol(self.symbol, self.data_handler, 'close', filters, transformers)
+        else:
+            self.rts_processor = NonMemSymbolProcessor(self.symbol, self.data_handler, 'close', filters, transformers)
+        
+        # Define forecast_length attribute (e.g., based on trusted_future or parameters)
+        self.forecast_length = self.trusted_future
+
+    def train(self, data):
+        return data
+
+    def predict(self, **kwarg):
+        # Get the latest close price from the data handler.
+        last_price = self.data_handler.get_last_data(self.symbol)['close']
+        # Initialize the prediction as a flat forecast.
+        prediction = [last_price] * self.forecast_length
+
+        # Retrieve indicators from the feature_extractor.
+        if isinstance(self.feature_extractor.indicators, dict):
+            df = self.feature_extractor.indicators[self.symbol]
+        elif isinstance(self.feature_extractor.indicators, pd.DataFrame):
+            df = self.feature_extractor.indicators
+        else:
+            raise ValueError("Unsupported format for indicators.")
+
+        # Extract the MACD-related columns (assume they exist).
+        macds = df[['macd', 'macd_signal', 'macd_diff']].tail(5)
+        last_diff = macds['macd_diff'].iloc[-1]
+        prev_diff = macds['macd_diff'].iloc[-2]
+        
+        # Retrieve the latest ADX value.
+        current_adx = df['adx'].iloc[-1]
+
+        # Only activate MACD signals if ADX is above the threshold.
+        if current_adx >= self.adx_threshold:
+            # Check for a bullish MACD crossover: MACD histogram turning positive.
+            if prev_diff < self.macd_threshold and last_diff > self.macd_threshold:
+                # "BUY - MACD Histogram turned positive"
+                for i in range(1, self.forecast_length):
+                    prediction[i] = prediction[i-1] * (1 + 0.05)
+            # Check for a bearish MACD crossover: MACD histogram turning negative.
+            elif prev_diff > self.macd_threshold and last_diff < self.macd_threshold:
+                # "SELL - MACD Histogram turned negative"
+                for i in range(1, self.forecast_length):
+                    prediction[i] = prediction[i-1] * (1 - 0.05)
+        # Else, if ADX is below the threshold, no trade signal is generated.
+        # The prediction remains flat at the last price.
+
+        return prediction
+    
+    def preprocess(self):
+        pass
+    
+    def evaluate(self, data):
+        return data
+
+class RSIwADX(BaseModel):
+    def __init__(self, symbol, data_handler, signal_processors, feature_extractor, model_variant, **params):
+        super().__init__(symbol, data_handler, signal_processors, feature_extractor)
+        self.symbol = symbol
+        self.trusted_future = 10  # forecast horizon
+        self.model_variant = model_variant
+        self.params = params
+
+        # Set strategy parameters (with defaults)
+        self.adx_threshold = params.get("adx_threshold", 20)
+        self.variance_factor = params.get("variance_factor", 1.8)
+        self.mae = params.get("mae", 0)  # margin adjustment error
+        self.rsi_window = params.get("rsi_var_window", 23)  # window for calculating current RSI statistics
+
+        # Set forecast_length attribute (can be adjusted as needed)
+        self.forecast_length = self.trusted_future
+
+        filters = []
+        transformers = []
+        if self.data_handler.__class__ == SingleSymbolDataHandler:
+            self.rts_processor = NonMemSymbolProcessorDataSymbol(self.symbol, self.data_handler, 'close', filters, transformers)
+        else:
+            self.rts_processor = NonMemSymbolProcessor(self.symbol, self.data_handler, 'close', filters, transformers)
+
+    def train(self, data):
+        return data
+
+    def predict(self, **kwargs):
+        # Get the last close price as a base value for the forecast.
+        last_data = self.data_handler.get_last_data(self.symbol)
+        last_price = last_data['close']
+        forecast = [last_price] * self.forecast_length
+
+        # Retrieve the indicator DataFrame from the feature extractor.
+        if isinstance(self.feature_extractor.indicators, dict):
+            df = self.feature_extractor.indicators[self.symbol]
+        elif isinstance(self.feature_extractor.indicators, pd.DataFrame):
+            df = self.feature_extractor.indicators
+        else:
+            raise ValueError("Unsupported format for indicators.")
+
+        # Calculate current RSI mean and standard deviation using only the last rsi_window values.
+        recent_rsi = df['rsi'].tail(self.rsi_window)
+        current_rsi_mean = recent_rsi.mean()
+        current_rsi_std = recent_rsi.std()
+
+        # Get current indicator values from the latest row.
+        current_rsi = df['rsi'].iloc[-1]
+        current_adx = df['adx'].iloc[-1]
+
+        # Calculate dynamic RSI thresholds using the current rolling statistics.
+        dynamic_upper = current_rsi_mean + self.variance_factor * current_rsi_std
+        dynamic_lower = current_rsi_mean - self.variance_factor * current_rsi_std
+        
+        # Apply the dynamic RSI strategy only if the market is sideways.
+        if current_adx < self.adx_threshold:
+            if current_rsi <= dynamic_lower + self.mae:
+                # Signal for upward movement (BUY) – forecast a 5% increase per period.
+                for i in range(1, self.forecast_length):
+                    forecast[i] = forecast[i - 1] * (1 + 0.05)
+            elif current_rsi >= dynamic_upper - self.mae:
+                # Signal for downward movement (SELL) – forecast a 5% decrease per period.
+                for i in range(1, self.forecast_length):
+                    forecast[i] = forecast[i - 1] * (1 - 0.05)
+        # In trending conditions (ADX >= adx_threshold), no RSI-based trade is signaled,
+        # so the forecast remains flat at the last price.
+
+        return forecast
+    def preprocess(self):
+        pass
+    
+    def evaluate(self, data):
+        return data

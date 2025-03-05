@@ -110,19 +110,27 @@ class FeatureExtractor:
         # Create an empty DataFrame with the same index as the original data
         momentum_df = pd.DataFrame(index=data.index)
         momentum_hdf = pd.DataFrame(index=data.index)
+        
+        
         if self.rsi_period is not None:
-        # Add RSI to the new DataFrame
+            # Compute RSI using the TA library
             momentum_df['rsi'] = ta.momentum.RSIIndicator(
-                close=data['close'], window=self.rsi_period).rsi().bfill().ffill()
+                close=data['close'], window=self.rsi_period
+            ).rsi().bfill().ffill()
+            
+            # Compute instantaneous changes, gains, and losses
             rsi_h = pd.DataFrame(index=data.index)
             rsi_h['change'] = data['close'].diff()
             rsi_h['gain'] = rsi_h['change'].apply(lambda x: x if x > 0 else 0)
             rsi_h['loss'] = rsi_h['change'].apply(lambda x: -x if x < 0 else 0)
-            rsi_h['gain'] = rsi_h['change'].apply(lambda x: x if x > 0 else 0)
-            rsi_h['loss'] = rsi_h['change'].apply(lambda x: -x if x < 0 else 0)
-            momentum_hdf['avg_gain'] = rsi_h['gain'].rolling(window=self.rsi_period).mean()
-            momentum_hdf['avg_loss'] = rsi_h['loss'].rolling(window=self.rsi_period).mean()
-
+            
+            # Use pandas' ewm to calculate Wilder's smoothed averages
+            momentum_hdf['avg_gain'] = rsi_h['gain'].ewm(
+                alpha=1/self.rsi_period, min_periods=self.rsi_period, adjust=False
+            ).mean()
+            momentum_hdf['avg_loss'] = rsi_h['loss'].ewm(
+                alpha=1/self.rsi_period, min_periods=self.rsi_period, adjust=False
+            ).mean()
 
         # Add MACD (Moving Average Convergence Divergence)
         if self.macd_short is not None:
@@ -205,32 +213,57 @@ class FeatureExtractor:
 
         return volume_df
     
-    def add_trend_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+    def add_trend_indicators(self, data: pd.DataFrame):
         """
-        Adds trend-based indicators like Moving Averages (SMA, EMA) and ADX.
-        """
-        # Create a new DataFrame for trend indicators
+        Adds trend-based indicators (SMA, EMA, ADX) and initializes helper columns for ADX smoothing.
         
+        :param data: Historical data containing 'open', 'high', 'low', 'close', 'volume'.
+        :return: A tuple of DataFrames: (trend_df, trend_dfh) where trend_df contains the indicators and
+                trend_dfh contains the helper columns.
+        """
         trend_df = pd.DataFrame(index=data.index)
+        trend_dfh = pd.DataFrame(index=data.index)
+        
         if self.sma_period is not None:
-            # Simple Moving Average (SMA)
             trend_df['sma'] = ta.trend.SMAIndicator(
                 close=data['close'], window=self.sma_period
             ).sma_indicator().bfill().ffill()
+            
         if self.ema_period is not None:
-            # Exponential Moving Average (EMA)
             trend_df['ema'] = ta.trend.EMAIndicator(
                 close=data['close'], window=self.ema_period
             ).ema_indicator().bfill().ffill()
+            
         if self.adx_period is not None:
-            # Average Directional Index (ADX)
             trend_df['adx'] = ta.trend.ADXIndicator(
                 high=data['high'], low=data['low'], close=data['close'], window=self.adx_period
             ).adx().bfill().ffill()
+            
+            # Calculate True Range (TR) vectorized
+            tr = pd.concat([
+                data['high'] - data['low'],
+                (data['high'] - data['close'].shift(1)).abs(),
+                (data['low'] - data['close'].shift(1)).abs()
+            ], axis=1).max(axis=1)
+            
+            # Directional movements
+            up_move = data['high'] - data['high'].shift(1)
+            down_move = data['low'].shift(1) - data['low']
+            plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0), index=data.index)
+            minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0), index=data.index)
+            
+            # Use EMA smoothing with alpha=1/self.adx_period (equivalent to Wilder’s smoothing)
+            trend_dfh['smoothed_tr'] = tr.ewm(alpha=1/self.adx_period, adjust=False).mean()
+            trend_dfh['smoothed_plus_dm'] = plus_dm.ewm(alpha=1/self.adx_period, adjust=False).mean()
+            trend_dfh['smoothed_minus_dm'] = minus_dm.ewm(alpha=1/self.adx_period, adjust=False).mean()
+        
+        # Limit history if needed.
         if len(trend_df) > self.maximum_history:
             trend_df = trend_df.tail(self.maximum_history)
-
-        return trend_df
+        if len(trend_dfh) > self.maximum_history:
+            trend_dfh = trend_dfh.tail(self.maximum_history)
+        
+        return trend_df, trend_dfh
     
     def add_custom_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -295,8 +328,9 @@ class FeatureExtractor:
             if isinstance(data_symbol, pd.Series):
                 data_symbol = pd.DataFrame(data_symbol).T
             new_row = pd.DataFrame({col: 0 for col in self.indicators[symbol].columns}, index=new_datetime)
+            new_helper_row = pd.DataFrame({col: 0 for col in self.helpers[symbol].columns}, index=new_datetime)
             self.indicators[symbol] = pd.concat([self.indicators[symbol], new_row])
-            self.helpers[symbol] = pd.concat([self.helpers[symbol], new_row])
+            self.helpers[symbol] = pd.concat([self.helpers[symbol], new_helper_row])
             self.update_mom_indicators(symbol, data_symbol)
             self.update_vol_indicators(symbol, data_symbol)
             self.update_trend_indicators(symbol, data_symbol)
@@ -434,16 +468,33 @@ class FeatureExtractor:
             self.indicators[symbol].loc[last_index, 'ema'] = updated_ema
 
         # Update Average Directional Index (ADX)
-        if 'adx' in self.indicators[symbol].columns:
+        if 'adx' in self.indicators.columns:
             prev_adx = self.indicators[symbol]['adx'].iloc[-2]
-            prev_data = self.data_handler.get_data_limit(symbol, 2, clean=True).iloc[-2]
+            prev_data = self.data_handler.get_data_limit(symbol,2, clean=True).iloc[-2]
             prev_high = prev_data['high']
             prev_low = prev_data['low']
             prev_close = prev_data['close']
             current_high = data['high'].iloc[0]
             current_low = data['low'].iloc[0]
-            updated_adx = self.update_adx(prev_high, prev_low, prev_close, current_high, current_low, prev_adx)
+            current_close = data['close'].iloc[0]
+
+            # Directly access helper columns
+            prev_smoothed_tr = self.helpers[symbol]['smoothed_tr'].iloc[-2]
+            prev_smoothed_plus_dm = self.helpers[symbol]['smoothed_plus_dm'].iloc[-2]
+            prev_smoothed_minus_dm = self.helpers[symbol]['smoothed_minus_dm'].iloc[-2]
+            
+            updated_adx, new_smoothed_tr, new_smoothed_plus_dm, new_smoothed_minus_dm = self.update_adx(
+                prev_high, prev_low, prev_close,
+                current_high, current_low, current_close,
+                prev_adx,
+                prev_smoothed_tr, prev_smoothed_plus_dm, prev_smoothed_minus_dm
+            )
             self.indicators[symbol].loc[last_index, 'adx'] = updated_adx
+            
+            # Update helper columns
+            self.helpers[symbol].loc[last_index, 'smoothed_tr'] = new_smoothed_tr
+            self.helpers[symbol].loc[last_index, 'smoothed_plus_dm'] = new_smoothed_plus_dm
+            self.helpers[symbol].loc[last_index, 'smoothed_minus_dm'] = new_smoothed_minus_dm
     
     def update_custom_indicators(self, symbol):
         pass
@@ -592,32 +643,49 @@ class FeatureExtractor:
         updated_ema = (new_close - prev_ema) * alpha + prev_ema
         return updated_ema
 
-    def update_adx(self, prev_high, prev_low, prev_close, current_high, current_low, prev_adx):
+    def update_adx(self, prev_high, prev_low, prev_close,
+               current_high, current_low, current_close,
+               prev_adx,
+               prev_smoothed_tr, prev_smoothed_plus_dm, prev_smoothed_minus_dm):
         """
-        Updates the Average Directional Index (ADX) using the previous ADX and new high, low, close prices.
-
-        :param symbol: The trading symbol.
-        :param prev_adx: The last calculated ADX value.
-        :param data: Latest data, containing 'high', 'low', 'close'.
-        :return: Updated ADX value.
+        Updates the Average Directional Index (ADX) using previous smoothed values and new high, low, close prices.
+        
+        This function uses Wilder's smoothing method to update TR, +DM, and -DM.
+        
+        :return: A tuple containing:
+                - Updated ADX value.
+                - Updated smoothed TR.
+                - Updated smoothed +DM.
+                - Updated smoothed -DM.
         """
-        # Retrieve the previous data points for the indicator calculation
-        tr = max(current_high - current_low, abs(current_high - prev_close), abs(current_low - prev_close))
-        # Step 2: Calculate +DM and -DM
+        period = self.adx_period
+        
+        # Step 1: Compute current raw values
+        raw_tr = max(current_high - current_low,
+                    abs(current_high - prev_close),
+                    abs(current_low - prev_close))
         up_move = current_high - prev_high
         down_move = prev_low - current_low
-        plus_dm = up_move if up_move > down_move and up_move > 0 else 0
-        minus_dm = down_move if down_move > up_move and down_move > 0 else 0
-        # Step 3: Calculate +DI and -DI (Directional Indicators)
-        plus_di = (plus_dm / tr) * 100 if tr != 0 else 0
-        minus_di = (minus_dm / tr) * 100 if tr != 0 else 0
-        # Using ta-lib to calculate ADX for the current data
-        dx = abs(plus_di - minus_di) / (plus_di + minus_di) * 100 if (plus_di + minus_di) != 0 else 0
-        adx = ((prev_adx * (self.adx_period - 1)) + dx) / self.adx_period
-
-        return adx
+        raw_plus_dm = up_move if (up_move > down_move and up_move > 0) else 0
+        raw_minus_dm = down_move if (down_move > up_move and down_move > 0) else 0
+        
+        # Step 2: Update the smoothed values using Wilder's smoothing method
+        smoothed_tr = prev_smoothed_tr - (prev_smoothed_tr / period) + raw_tr
+        smoothed_plus_dm = prev_smoothed_plus_dm - (prev_smoothed_plus_dm / period) + raw_plus_dm
+        smoothed_minus_dm = prev_smoothed_minus_dm - (prev_smoothed_minus_dm / period) + raw_minus_dm
+        
+        # Step 3: Calculate the directional indicators
+        plus_di = (smoothed_plus_dm / smoothed_tr) * 100 if smoothed_tr != 0 else 0
+        minus_di = (smoothed_minus_dm / smoothed_tr) * 100 if smoothed_tr != 0 else 0
+        
+        # Step 4: Calculate DX
+        dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100 if (plus_di + minus_di) != 0 else 0
+        
+        # Step 5: Update ADX using the new DX value
+        adx = ((prev_adx * (period - 1)) + dx) / period
+        
+        return adx, smoothed_tr, smoothed_plus_dm, smoothed_minus_dm
     
-
     def update_vwap(self, prev_vwap, new_close, new_volume):
         """
         Updates the Volume Weighted Average Price (VWAP) using the previous VWAP, new closing price, and volume.
@@ -734,16 +802,24 @@ class SingleSymbolFeatureExtractor:
         momentum_hdf = pd.DataFrame(index=data.index)
         
         if self.rsi_period is not None:
-            # Add RSI to the new DataFrame
+            # Compute RSI using the TA library
             momentum_df['rsi'] = ta.momentum.RSIIndicator(
-                close=data['close'], window=self.rsi_period).rsi().bfill().ffill()
+                close=data['close'], window=self.rsi_period
+            ).rsi().bfill().ffill()
+            
+            # Compute instantaneous changes, gains, and losses
             rsi_h = pd.DataFrame(index=data.index)
             rsi_h['change'] = data['close'].diff()
             rsi_h['gain'] = rsi_h['change'].apply(lambda x: x if x > 0 else 0)
             rsi_h['loss'] = rsi_h['change'].apply(lambda x: -x if x < 0 else 0)
-            momentum_hdf['avg_gain'] = rsi_h['gain'].rolling(window=self.rsi_period).mean()
-            momentum_hdf['avg_loss'] = rsi_h['loss'].rolling(window=self.rsi_period).mean()
-
+            
+            # Use pandas' ewm to calculate Wilder's smoothed averages
+            momentum_hdf['avg_gain'] = rsi_h['gain'].ewm(
+                alpha=1/self.rsi_period, min_periods=self.rsi_period, adjust=False
+            ).mean()
+            momentum_hdf['avg_loss'] = rsi_h['loss'].ewm(
+                alpha=1/self.rsi_period, min_periods=self.rsi_period, adjust=False
+            ).mean()
         # Add MACD (Moving Average Convergence Divergence)
         if self.macd_short is not None:
             macd = ta.trend.MACD(
@@ -777,7 +853,6 @@ class SingleSymbolFeatureExtractor:
             
         if len(momentum_hdf) > self.maximum_history:
             momentum_hdf = momentum_hdf.tail(self.maximum_history)
-        
         return momentum_df, momentum_hdf
 
     def add_volatility_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -828,38 +903,58 @@ class SingleSymbolFeatureExtractor:
                                     
         return volume_df
 
-    def add_trend_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+    def add_trend_indicators(self, data: pd.DataFrame):
         """
-        Adds trend-based indicators like Moving Averages (SMA, EMA) and ADX.
+        Adds trend-based indicators (SMA, EMA, ADX) and initializes helper columns for ADX smoothing.
         
         :param data: Historical data containing 'open', 'high', 'low', 'close', 'volume'.
-        :return: DataFrame containing initialized trend indicators.
+        :return: A tuple of DataFrames: (trend_df, trend_dfh) where trend_df contains the indicators and
+                trend_dfh contains the helper columns.
         """
-        # Create a new DataFrame for trend indicators
         trend_df = pd.DataFrame(index=data.index)
+        trend_dfh = pd.DataFrame(index=data.index)
         
         if self.sma_period is not None:
-            # Simple Moving Average (SMA)
             trend_df['sma'] = ta.trend.SMAIndicator(
                 close=data['close'], window=self.sma_period
             ).sma_indicator().bfill().ffill()
             
         if self.ema_period is not None:
-            # Exponential Moving Average (EMA)
             trend_df['ema'] = ta.trend.EMAIndicator(
                 close=data['close'], window=self.ema_period
             ).ema_indicator().bfill().ffill()
             
         if self.adx_period is not None:
-            # Average Directional Index (ADX)
             trend_df['adx'] = ta.trend.ADXIndicator(
                 high=data['high'], low=data['low'], close=data['close'], window=self.adx_period
             ).adx().bfill().ffill()
             
+            # Calculate True Range (TR) vectorized
+            tr = pd.concat([
+                data['high'] - data['low'],
+                (data['high'] - data['close'].shift(1)).abs(),
+                (data['low'] - data['close'].shift(1)).abs()
+            ], axis=1).max(axis=1)
+            
+            # Directional movements
+            up_move = data['high'] - data['high'].shift(1)
+            down_move = data['low'].shift(1) - data['low']
+            plus_dm = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0), index=data.index)
+            minus_dm = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0), index=data.index)
+            
+            # Use EMA smoothing with alpha=1/self.adx_period (equivalent to Wilder’s smoothing)
+            trend_dfh['smoothed_tr'] = tr.ewm(alpha=1/self.adx_period, adjust=False).mean()
+            trend_dfh['smoothed_plus_dm'] = plus_dm.ewm(alpha=1/self.adx_period, adjust=False).mean()
+            trend_dfh['smoothed_minus_dm'] = minus_dm.ewm(alpha=1/self.adx_period, adjust=False).mean()
+        
+        # Limit history if needed.
         if len(trend_df) > self.maximum_history:
             trend_df = trend_df.tail(self.maximum_history)
+        if len(trend_dfh) > self.maximum_history:
+            trend_dfh = trend_dfh.tail(self.maximum_history)
+        
+        return trend_df, trend_dfh
 
-        return trend_df
     def add_custom_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
 
         pass
@@ -872,12 +967,12 @@ class SingleSymbolFeatureExtractor:
         momentum_df, momentum_hdf = self.add_momentum_indicators(data)
         volatility_df = self.add_volatility_indicators(data)
         volume_df = self.add_volume_indicators(data)
-        trend_df = self.add_trend_indicators(data)
+        trend_df, trend_dfh = self.add_trend_indicators(data)
         custom_df = self.add_custom_indicators(data)
         
         self.indicators = pd.concat([momentum_df, volatility_df, volume_df, trend_df, custom_df], axis=1)
         
-        self.helpers = momentum_hdf
+        self.helpers = pd.concat([momentum_hdf, trend_dfh],axis = 1)
         del momentum_df, volatility_df, volume_df, trend_df, custom_df
         gc.collect()
 
@@ -991,8 +1086,9 @@ class SingleSymbolFeatureExtractor:
     def update(self, new_data):
         new_datetime = new_data.index
         new_row = pd.DataFrame({col: 0 for col in self.indicators.columns}, index=new_datetime)
+        new_helper = pd.DataFrame({col: 0 for col in self.helpers.columns}, index=new_datetime)
         self.indicators = pd.concat([self.indicators, new_row])
-        self.helpers = pd.concat([self.helpers, new_row])
+        self.helpers = pd.concat([self.helpers, new_helper])
         self.update_mom_indicators(new_data)
         self.update_vol_indicators(new_data)
         self.update_trend_indicators(new_data)
@@ -1014,10 +1110,11 @@ class SingleSymbolFeatureExtractor:
                 'previous_close': prev_close
             }
             updated_rsi = self.update_rsi(prev_rsi, new_close)
+            
             self.indicators.loc[last_index, 'rsi'] = updated_rsi['rsi_value']
             self.helpers.loc[last_index, 'avg_gain'] = updated_rsi['avg_gain']
             self.helpers.loc[last_index, 'avg_loss'] = updated_rsi['avg_loss']
-
+            
         if 'macd' in self.indicators.columns:
             prev_macd = {
                 'short_ema': self.helpers['macd_long_ema'].iloc[-2] + self.indicators['macd'].iloc[-2],
@@ -1130,13 +1227,31 @@ class SingleSymbolFeatureExtractor:
             prev_close = prev_data['close']
             current_high = data['high'].iloc[0]
             current_low = data['low'].iloc[0]
-            updated_adx = self.update_adx(prev_high, prev_low, prev_close, current_high, current_low, prev_adx)
-            self.indicators.loc[last_index, 'adx'] = updated_adx
+            current_close = data['close'].iloc[0]
 
+            # Directly access helper columns
+            prev_smoothed_tr = self.helpers['smoothed_tr'].iloc[-2]
+            prev_smoothed_plus_dm = self.helpers['smoothed_plus_dm'].iloc[-2]
+            prev_smoothed_minus_dm = self.helpers['smoothed_minus_dm'].iloc[-2]
+            
+            updated_adx, new_smoothed_tr, new_smoothed_plus_dm, new_smoothed_minus_dm = self.update_adx(
+                prev_high, prev_low, prev_close,
+                current_high, current_low, current_close,
+                prev_adx,
+                prev_smoothed_tr, prev_smoothed_plus_dm, prev_smoothed_minus_dm
+            )
+            self.indicators.loc[last_index, 'adx'] = updated_adx
+            
+            # Update helper columns
+            self.helpers.loc[last_index, 'smoothed_tr'] = new_smoothed_tr
+            self.helpers.loc[last_index, 'smoothed_plus_dm'] = new_smoothed_plus_dm
+            self.helpers.loc[last_index, 'smoothed_minus_dm'] = new_smoothed_minus_dm
+    
     def update_custom_indicators(self):
         pass
 ############## Momentum Indicator Functions #################
     def update_rsi(self, prev_rsi, new_close):
+    
         # Calculate the new gain or loss
         new_diff = new_close - prev_rsi['previous_close']
         gain = max(new_diff, 0)
@@ -1146,12 +1261,9 @@ class SingleSymbolFeatureExtractor:
         avg_gain = (prev_rsi['avg_gain'] * (self.rsi_period - 1) + gain) / self.rsi_period
         avg_loss = (prev_rsi['avg_loss'] * (self.rsi_period - 1) + loss) / self.rsi_period
 
-        # Calculate the updated RSI value
-        if avg_loss == 0:
-            rs = np.inf
-        else:
-            rs = avg_gain / avg_loss
-
+        # Use a small constant to avoid division by zero issues
+        # epsilon = 1e-8
+        rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
 
         return {
@@ -1159,6 +1271,7 @@ class SingleSymbolFeatureExtractor:
             'avg_gain': avg_gain,
             'avg_loss': avg_loss
         }
+    
 
     def update_macd(self, prev_macd, new_close):
         """
@@ -1280,30 +1393,48 @@ class SingleSymbolFeatureExtractor:
         updated_ema = (new_close - prev_ema) * alpha + prev_ema
         return updated_ema
 
-    def update_adx(self, prev_high, prev_low, prev_close, current_high, current_low, prev_adx):
+    def update_adx(self, prev_high, prev_low, prev_close,
+               current_high, current_low, current_close,
+               prev_adx,
+               prev_smoothed_tr, prev_smoothed_plus_dm, prev_smoothed_minus_dm):
         """
-        Updates the Average Directional Index (ADX) using the previous ADX and new high, low, close prices.
-
-        :param symbol: The trading symbol.
-        :param prev_adx: The last calculated ADX value.
-        :param data: Latest data, containing 'high', 'low', 'close'.
-        :return: Updated ADX value.
+        Updates the Average Directional Index (ADX) using previous smoothed values and new high, low, close prices.
+        
+        This function uses Wilder's smoothing method to update TR, +DM, and -DM.
+        
+        :return: A tuple containing:
+                - Updated ADX value.
+                - Updated smoothed TR.
+                - Updated smoothed +DM.
+                - Updated smoothed -DM.
         """
-        # Retrieve the previous data points for the indicator calculation
-        tr = max(current_high - current_low, abs(current_high - prev_close), abs(current_low - prev_close))
-        # Step 2: Calculate +DM and -DM
+        period = self.adx_period
+        
+        # Step 1: Compute current raw values
+        raw_tr = max(current_high - current_low,
+                    abs(current_high - prev_close),
+                    abs(current_low - prev_close))
         up_move = current_high - prev_high
         down_move = prev_low - current_low
-        plus_dm = up_move if up_move > down_move and up_move > 0 else 0
-        minus_dm = down_move if down_move > up_move and down_move > 0 else 0
-        # Step 3: Calculate +DI and -DI (Directional Indicators)
-        plus_di = (plus_dm / tr) * 100 if tr != 0 else 0
-        minus_di = (minus_dm / tr) * 100 if tr != 0 else 0
-        # Using ta-lib to calculate ADX for the current data
-        dx = abs(plus_di - minus_di) / (plus_di + minus_di) * 100 if (plus_di + minus_di) != 0 else 0
-        adx = ((prev_adx * (self.adx_period - 1)) + dx) / self.adx_period
-
-        return adx
+        raw_plus_dm = up_move if (up_move > down_move and up_move > 0) else 0
+        raw_minus_dm = down_move if (down_move > up_move and down_move > 0) else 0
+        
+        # Step 2: Update the smoothed values using Wilder's smoothing method
+        smoothed_tr = prev_smoothed_tr - (prev_smoothed_tr / period) + raw_tr
+        smoothed_plus_dm = prev_smoothed_plus_dm - (prev_smoothed_plus_dm / period) + raw_plus_dm
+        smoothed_minus_dm = prev_smoothed_minus_dm - (prev_smoothed_minus_dm / period) + raw_minus_dm
+        
+        # Step 3: Calculate the directional indicators
+        plus_di = (smoothed_plus_dm / smoothed_tr) * 100 if smoothed_tr != 0 else 0
+        minus_di = (smoothed_minus_dm / smoothed_tr) * 100 if smoothed_tr != 0 else 0
+        
+        # Step 4: Calculate DX
+        dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100 if (plus_di + minus_di) != 0 else 0
+        
+        # Step 5: Update ADX using the new DX value
+        adx = ((prev_adx * (period - 1)) + dx) / period
+        
+        return adx, smoothed_tr, smoothed_plus_dm, smoothed_minus_dm
     
 
     def update_vwap(self, prev_vwap, new_close, new_volume):
