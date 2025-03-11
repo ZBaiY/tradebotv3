@@ -51,13 +51,6 @@ Tradebot v3 is a multi-symbol crypto trading bot that automates data collection,
   There are some extra configurations for the mock accounts, go to /mock/config
 
 
-## Testing
-- Unit and integration tests (if available) are located in the `tests/` directory.
-- Run tests using:
-  ```bash
-  pytest
-  ```
-- Ensure tests cover core functionalities like data preprocessing, strategy evaluation, and model performance.
 
 ## Pre-Analysis
 - Folder 'notebooks' contains data manipulations and some tests for strategies before implementation
