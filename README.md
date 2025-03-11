@@ -50,33 +50,7 @@ Tradebot v3 is a multi-symbol crypto trading bot that automates data collection,
   For Live/Mock Trading, go to /cofig
   There are some extra configurations for the mock accounts, go to /mock/config
 
-## Documentation
-- Detailed documentation for each module (backtesting, data handling, strategy development, etc.) can be found in the `doc/` folder.
-- Refer to the included Mermaid diagram for a visual overview of the repository structure.
-
-## Testing
-- Unit and integration tests (if available) are located in the `tests/` directory.
-- Run tests using:
-  ```bash
-  pytest
-  ```
-- Ensure tests cover core functionalities like data preprocessing, strategy evaluation, and model performance.
-
-## Pre-Analysis
-- Folder 'notebooks' contains data manipulations and some tests for strategies before implementation
-
-## Future Developments
-- For planned enhancements and feature requests, refer to the `doc/Future developments.md` file.
-
-
-## Contact
-For questions or further information, please contact:  
-Zhaoyu Bai – zbaiy.imsoion@yahoo.com
-
-
-for DOGE or others who only works with integer amount, need to round down, we did it in risk manager, but also need to integrate it when dealing with fees.
-
-# My Trading Bot Architecture
+## My Trading Bot Architecture
 
 ```mermaid
 graph TD
@@ -107,3 +81,26 @@ graph TD
 
     %% Trade Execution Loop
     F -->|Executes trades in real-time| A
+
+## Testing
+- Unit and integration tests (if available) are located in the `tests/` directory.
+- Run tests using:
+  ```bash
+  pytest
+  ```
+- Ensure tests cover core functionalities like data preprocessing, strategy evaluation, and model performance.
+
+## Pre-Analysis
+- Folder 'notebooks' contains data manipulations and some tests for strategies before implementation
+
+## Future Developments
+- For planned enhancements and feature requests, refer to the `doc/Future developments.md` file.
+
+
+## Contact
+For questions or further information, please contact:  
+Zhaoyu Bai – zbaiy.imsoion@yahoo.com
+
+
+for DOGE or others who only works with integer amount, need to round down, we did it in risk manager, but also need to integrate it when dealing with fees.
+
