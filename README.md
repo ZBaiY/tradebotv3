@@ -17,7 +17,7 @@ Tradebot v3 is a multi-symbol crypto trading bot that automates data collection,
 ## Getting Started
 
 ### Prerequisites
-- Python 3.8+ (or specify your version)
+- Python 3.8+
 - Required packages can be installed via:
   ```bash
   pip install -r requirements.txt
@@ -64,18 +64,6 @@ Tradebot v3 is a multi-symbol crypto trading bot that automates data collection,
 
 ## Pre-Analysis
 - Folder 'notebooks' contains data manipulations and some tests for strategies before implementation
-
-## Code Quality and Best Practices
-- **Commit History:**  
-  - Maintain a meaningful commit history. Use descriptive messages that explain the rationale behind changes.
-  - Avoid generic commit messages; instead, specify changes like "Refactored data preprocessing module for efficiency" or "Fixed bug in risk management calculations."
-- **Coding Standards:**  
-  - Follow standard conventions (e.g., PEP8 for Python).
-  - Keep code well-commented and easy to read.
-  - Use consistent naming conventions and style throughout the codebase.
-- **Documentation:**  
-  - Ensure inline comments and docstrings explain complex logic.
-  - Provide clear instructions on how to use each module.
 
 ## Future Developments
 - For planned enhancements and feature requests, refer to the `doc/Future developments.md` file.
