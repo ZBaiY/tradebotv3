@@ -639,7 +639,8 @@ def update_scaler_with_recent_data(symbols, required_labels, interval, scaler_ty
         print(f"Scalers updated for {symbol} with {interval} data.")
 
 def round_down(number, precision=3):
-    
+    # !!!!因交易时间差，可能会导致价格变动。!!!!注意，需要对amount做一定的round down处理，以避免花更多的钱买入。
+    # 3位小数因为加密货币会在百毫秒级产生1e-3的波动
     # Convert the number to a string to easily access digits
     num_str = str(number)
     # Remove the decimal point for easier counting

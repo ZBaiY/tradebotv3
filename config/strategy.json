@@ -1,13 +1,13 @@
 {
     "BTCUSDT": {
-        "model": {"method": "Base_MACD_type0", "params": {"para1": "p1", "para2": "p2"}},
+        "model": {"method":  "Base_RSIwADX_type0", "params": {"adx_threshold": 20, "variance_factor": 1.8, "rsi_var_window": 23,"macd_threshold": 45}},
         "risk_manager": {"stop_method": "atr", "stop_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
                          "take_method": "risk_reward", "take_params": {"risk_reward_ratio": 4, "take_profit": 0.1, "atr_window": 14},
                          "position_method": "none", "position_params": {"fixed_fraction": 1.0, "risk_per_trade": 1.0}},
         "decision_maker": {"method": "threshold_mode1", "params": {"threshold": 0.002, "para2": "p2"}}
     },
     "ETHUSDT": {
-        "model": {"method": "Base_MACD_type0", "params": {"para1": "p1", "para2": "p2"}},
+        "model": {"method":  "Base_Test_type0", "params": {"adx_threshold": 20, "variance_factor": 1.8, "rsi_var_window": 23,"macd_threshold": 45}},
         "risk_manager": {"stop_method": "atr", "stop_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
                          "take_method": "risk_reward", "take_params": {"risk_reward_ratio": 4, "take_profit": 0.1, "atr_window": 14},
                          "position_method": "none", "position_params": {"fixed_fraction": 1.0,"risk_per_trade": 1.0}},

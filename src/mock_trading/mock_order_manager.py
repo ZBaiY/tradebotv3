@@ -119,7 +119,7 @@ class MockOrderManager:
 
         # Update balances and trades
         price = self.get_current_price(symbol) if price == -1 else price
-        # 因交易时间差，可能会导致价格变动。注意，需要对amount做一定的round down处理，以避免花更多的钱买入。
+        # !!!!因交易时间差，可能会导致价格变动。!!!!注意，需要对amount做一定的round down处理，以避免花更多的钱买入。
         order['price'] = price
         if status == "FILLED": # if market order
             self.update_trade_file(order)
@@ -158,14 +158,11 @@ class MockOrderManager:
         balances = {balance['asset']: float(balance['free']) for balance in account_info['balances']}
         locked = {balance['asset']: balance['locked'] for balance in account_info['balances']}
         if order_type == "buy":
-            cost = amount * (price if price != -1 else 1)  # Assume 1 for market price
+            cost = amount * (price if price != -1 else 1)  # Total cost of the trade
             if balances.get(quote_asset, 0) >= cost:
-                if balances.get(quote_asset, 0) < cost * (1+fee):
-                    amount = amount / (1+fee)   ### for DOGE or others who only works with integer amount, need to round down, fix it future
-                    cost = balances[quote_asset]
-                else:
-                    cost *= (1+fee)
-                balances[quote_asset] -= cost 
+                # Deduct cost from quote balance as before
+                balances[quote_asset] -= cost
+                amount = amount * (1 - fee)
                 balances[base_asset] = balances.get(base_asset, 0) + amount
             else:
                 self.logger.warning(f"Insufficient balance to buy {amount} {base_asset} at {price} {quote_asset} each.")
@@ -173,7 +170,8 @@ class MockOrderManager:
         elif order_type == "sell":
             if balances.get(base_asset, 0) >= amount:
                 balances[base_asset] -= amount
-                balances[quote_asset] = balances.get(quote_asset, 0) - amount * (1-fee) * (price if price != -1 else 1)
+                amount = amount * (1 - fee)
+                balances[quote_asset] = balances.get(quote_asset, 0) + amount * (price if price != -1 else 1)
             else:
                 self.logger.warning(f"Insufficient balance to sell {amount} {base_asset} at {price} {quote_asset} each.")
 

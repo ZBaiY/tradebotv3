@@ -165,6 +165,7 @@ class FeatureExtractor:
             
         if len(momentum_hdf) > self.maximum_history:
             momentum_hdf = momentum_hdf.tail(self.maximum_history)
+        
         return momentum_df, momentum_hdf
     
     def add_volatility_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -187,7 +188,7 @@ class FeatureExtractor:
             ).average_true_range().bfill().ffill()
         if len(volatility_df) > self.maximum_history:
             volatility_df = volatility_df.tail(self.maximum_history)
-
+        
         return volatility_df
     
     def add_volume_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -210,7 +211,7 @@ class FeatureExtractor:
 
         if len(volume_df) > self.maximum_history:
             volume_df = volume_df.tail(self.maximum_history)
-
+        
         return volume_df
     
     def add_trend_indicators(self, data: pd.DataFrame):
@@ -291,11 +292,11 @@ class FeatureExtractor:
             momentum_df, momentum_hdf = self.add_momentum_indicators(data)
             volatility_df = self.add_volatility_indicators(data)
             volume_df = self.add_volume_indicators(data)
-            trend_df = self.add_trend_indicators(data)
+            trend_df, trend_hdf = self.add_trend_indicators(data)
             custom_df = self.add_custom_indicators(data)
             self.indicators[symbol] = pd.concat([momentum_df, volatility_df, volume_df, trend_df, custom_df], axis=1)
-            self.helpers[symbol] = momentum_hdf
-            del momentum_df, volatility_df, volume_df, trend_df, custom_df
+            self.helpers[symbol] = pd.concat([momentum_hdf, trend_hdf], axis=1)
+            del momentum_df, volatility_df, volume_df, trend_df, custom_df, momentum_hdf, trend_hdf
             gc.collect()
 
         if self.select_method == "top_n":
@@ -468,7 +469,7 @@ class FeatureExtractor:
             self.indicators[symbol].loc[last_index, 'ema'] = updated_ema
 
         # Update Average Directional Index (ADX)
-        if 'adx' in self.indicators.columns:
+        if 'adx' in self.indicators[symbol].columns:
             prev_adx = self.indicators[symbol]['adx'].iloc[-2]
             prev_data = self.data_handler.get_data_limit(symbol,2, clean=True).iloc[-2]
             prev_high = prev_data['high']

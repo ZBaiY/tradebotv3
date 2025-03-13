@@ -6,22 +6,22 @@
     "canTrade": true,
     "canWithdraw": true,
     "canDeposit": true,
-    "updateTime": 1624362346001,
+    "updateTime": 1624362346000,
     "accountType": "SPOT",
     "balances": [
         {
             "asset": "BTC",
-            "free": "0.0000000",
+            "free": "0.00612387",
             "locked": "0.0000000"
         },
         {
             "asset": "ETH",
-            "free": "0.0000000",
+            "free": "3.950999999393853e-07",
             "locked": "0.0000000"
         },
         {
             "asset": "USDT",
-            "free": "1000.00000000",
+            "free": "476.82874582330993",
             "locked": "0.00000000"
         }
     ],

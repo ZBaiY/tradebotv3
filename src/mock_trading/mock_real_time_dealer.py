@@ -76,10 +76,10 @@ class MockRealtimeDealer:
         info = self.OrderManager.get_account_info()
         self.balances_str = info['balances']
         self.equity = self.calculate_equity(self.balances_str)
+        if self.CapitalAllocator: self.CapitalAllocator.set_equity(self.equity)
+        if self.PortfolioManager: self.PortfolioManager.update_equity_balance(self.equity, self.balances_symbol)
         if self.RiskManager: self.RiskManager.update_equity_balance(self.equity, self.balances_symbol_fr, trade)
         if self.Strategy: self.Strategy.update_equity_balance(self.equity, self.balances_symbol_fr, trade)
-        if self.PortfolioManager: self.PortfolioManager.update_equity_balance(self.equity, self.balances_symbol)
-        if self.CapitalAllocator: self.CapitalAllocator.set_equity(self.equity)
 
     # Assets e.g. BTC, are not symbols, symbols are trading pairs e.g. BTCUSDT
     # Assests are used to calculate the equity in Binance API
@@ -127,7 +127,7 @@ class MockRealtimeDealer:
         original_qty = remaining_qty  # Keep track of original balance
         total_cost = 0.0
         total_bought_qty = 0.0
-        threshold = 1e-5  # Small threshold for rounding errors
+        threshold = 2e-3  # Small threshold for rounding errors
 
         if remaining_qty is None or remaining_qty < threshold:
             self.logger.info(f"No open position for {symbol}. Returning -1.")
@@ -330,6 +330,7 @@ class MockRealtimeDealer:
             print("current_price: ", {'ETHUSDT': self.data_handler.get_last_data('ETHUSDT')['close'], 'BTCUSDT':self.data_handler.get_last_data('BTCUSDT')['close']})
             print("stop_loss: ", stop_loss)
             print("take_profit: ", take_profit)
+    
             # input ("mock_real 319, Press Enter to continue...")
             """for symbol in self.symbols:
                 free_balance = self.balances_symbol_fr[symbol]
