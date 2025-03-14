@@ -22,10 +22,9 @@ class MockOrderManager:
         self.mock_trade_file = 'mock/config/mock_past_trades.json'
         self.mock_account_file = 'mock/config/mock_account.json'
         self.mock_order_file = 'mock/config/mock_orders.json'
-        self.logger = self._initialize_logging(log_dir, log_file)
+        self.logger = LoggingHandler(log_dir=log_dir, log_file=log_file).logger        
         self.logger.info("MockOrderManager initialized.")
-        
-        self.initialize_mock_data_file()
+
 
         # Initialize logging
         

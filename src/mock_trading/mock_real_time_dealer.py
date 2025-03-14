@@ -149,7 +149,7 @@ class MockRealtimeDealer:
 
                 # Stop early when the accounted amount matches the balance within a small margin
                 if remaining_qty < -1 * threshold:
-                    self.logger.warning(f"Trade log inconsistency detected for {symbol}. "
+                    self.logger.warning(f"EntryPrice: Trade log inconsistency detected for {symbol}. "
                                         f"Remaining quantity dropped below zero. Stopping calculation.")
                     break
                 if remaining_qty < threshold:
@@ -326,10 +326,6 @@ class MockRealtimeDealer:
                         price=-1  # For market order, use current price
                     )
                     self.equity_balance(trade=True)
-            # Execute the predicted signals
-            print("current_price: ", {'ETHUSDT': self.data_handler.get_last_data('ETHUSDT')['close'], 'BTCUSDT':self.data_handler.get_last_data('BTCUSDT')['close']})
-            print("stop_loss: ", stop_loss)
-            print("take_profit: ", take_profit)
     
             # input ("mock_real 319, Press Enter to continue...")
             """for symbol in self.symbols:
