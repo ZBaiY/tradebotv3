@@ -3,7 +3,7 @@
         "start_date": "2023-01-01",
         "interval": "15m",
         "end_date": "2024-09-24",
-        "model": {"method": "Base_MACDwADX_type0", "params": {"adx_threshold": 45, "variance_factor": 1.8, "rsi_var_window": 23,"macd_threshold": 0}},
+        "model": {"method": "Base_RSIwADX_type0", "params": {"adx_threshold": 20, "variance_factor": 1.8, "rsi_var_window": 23,"macd_threshold": 0}},
         "risk_manager": {"stop_method": "atr", "stop_params": {"para1": 0.05, "take_profit": 0.1, "atr_window": 14},
                          "take_method": "risk_reward", "take_params": {"risk_reward_ratio": 4, "atr_window": 14},
                          "position_method": "none", "position_params": {"risk_per_trade": 1.0}},
