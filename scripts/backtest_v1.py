@@ -65,5 +65,5 @@ if __name__ == '__main__':
     capital_history = pd.Series(backtester_BTCUSDT.capital_full_position)
     capital_history.to_csv(os.path.join(output_path, 'capital_history_BTCUSDT.csv'))
 
-    plt.plot(equity_history)
+    plt.plot(backtester_BTCUSDT.capital_full_position)
     plt.show()
