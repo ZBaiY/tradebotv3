@@ -3,6 +3,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from src.data_handling.historical_data_handler import HistoricalDataHandler  # Assuming this is the module where the class resides
 
+
 if __name__ == '__main__':
     
     # File paths to parameter files
@@ -20,3 +21,5 @@ if __name__ == '__main__':
 
     # Fetch and save data based on the JSON configuration
     historical_data_handler.fetch_save_json(fetch_data_file)
+
+

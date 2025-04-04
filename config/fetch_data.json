@@ -10,31 +10,14 @@
                 {"interval": "1d", 
                 "start_date": "2022-01-01", 
                 "clean": true, 
-                "raw": true, 
-                "rescale": true}
+                "raw": false, 
+                "rescale": false}
             ]
         },
         {
             "symbol": "ETHUSDT",
             "intervals": [
-                {"interval": "1d", "start_date": "2022-01-01", "clean": true, "raw": true, "rescale": true}
-            ]
-        },
-        {
-            "symbol": "ADAUSDT",
-            "intervals": [
-                {"interval": "1d", "start_date": "2022-01-01", "clean": true, "raw": true, "rescale": true}
-            ]
-        },
-        {
-            "symbol": "SOLUSDT",
-            "intervals": [
-                {"interval": "1d", "start_date": "2022-01-01", "clean": true, "raw": true, "rescale": true}            ]
-        },
-        {
-            "symbol": "XTZUSDT",
-            "intervals": [
-                {"interval": "1d", "start_date": "2022-01-01", "clean": true, "raw": true, "rescale": true}
+                {"interval": "1d", "start_date": "2022-01-01", "clean": true, "raw": false, "rescale": false}
             ]
         }
     ]
