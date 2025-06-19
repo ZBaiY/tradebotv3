@@ -1,6 +1,17 @@
 # Tradebot v3
 ![CI](https://github.com/ZBaiY/tradebotv3/actions/workflows/ci.yml/badge.svg)
 
+Event-driven crypto trading bot
+
+| Feature | Status |
+|-----------|-----------|
+| Real-time trading | Supported |
+| Backtesting | Supported |
+| Mock trading | Supported |
+| Modular strategy plug-ins | Supported |
+| Docker-based setup | Supported |
+| CI testing with GitHub Actions | Supported |
+
 ## Overview
 The most exciting version, with real time operations
 Scalers are refreshed weekly to keep feature distributions up to date.
@@ -60,6 +71,11 @@ In standard local runs (`python scripts/backtest_v1.py`), progress bars behave n
 
 ## Pre-Analysis
 - Folder 'notebooks' contains data manipulations and some tests for strategies before implementation
+
+## Example Reports
+
+- [Strategy Report – March 2025 (PDF)](./reports/StrategyReportMar_2025.pdf)
+- [Structure Report – March 2025 (PDF)](./reports/StructureReportMar_2025.pdf)
 
 ## Continuous Integration
 
@@ -172,3 +188,8 @@ docker compose build builder
 
 The loader auto‑registers your new classes—no core code changes needed.
 *Currently available baseline models: `MACDModel`, `MACDwADX`, `RSIwADX`, `ForTesting`.  More advanced models will be added in the next release.*
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).  
+Feel free to use or adapt for personal or commercial purposes with proper attribution.
