@@ -1,9 +1,10 @@
 # Tradebot v3
+![CI](https://github.com/ZBaiY/tradebotv3/actions/workflows/ci.yml/badge.svg)
 
 ## Overview
 The most exciting version, with real time operations
-Update the scalers every one week
-The costum selector, need to develop it for next version
+Scalers are refreshed weekly to keep feature distributions up to date.
+A custom feature selector is planned for the next release.
 
 Tradebot v3 is a multi-symbol crypto trading bot that automates data collection, strategy backtesting, and live trading using the Binance API. This repository includes code, documentation, and resources necessary to run, test, and further develop the bot.
 
@@ -22,6 +23,11 @@ Tradebot v3 is a multi-symbol crypto trading bot that automates data collection,
   ```bash
   pip install -r requirements.txt
   ```
+- Or run everything in Docker (no local Python needed):
+  ```bash
+  docker compose build builder   # build image & run smoke‑tests
+  docker compose up backtester   # launch back‑test
+  ```
 
 ### Running the Code
 
@@ -30,6 +36,7 @@ Tradebot v3 is a multi-symbol crypto trading bot that automates data collection,
 | **Back-test** | `python scripts/backtest_v1.py` | `docker compose up backtester` |
 | **Mock trade** | `python scripts/mock_trade.py` | `docker compose up mocktrader` |
 | **Fetch data** | `python scripts/fetch_data.py` | `docker compose up fetcher` |
+| **Smoke tests** | `pytest -q tests` | `docker compose run --rm backtester pytest -q` |
 
 _Back-test results are written to `/backtest/performance`, mock-trade logs to `/mock/logs`, fetched raw data to `/data`._
 
@@ -44,15 +51,24 @@ You have two options:
 | **Clean, single‑line bar** | `docker compose run --rm --tty backtester` |
 | **Quiet logs (no bar)** | `TQDM_DISABLE=1 docker compose up backtester` |
 
-In standard local runs (`python scripts/backtest_v1.pNo source‑code changes are required.
+In standard local runs (`python scripts/backtest_v1.py`), progress bars behave normally. No source‑code changes are required.
 
 - **Customize the configurations**
   For Backtest, go to: /backtest/config
   For Live/Mock Trading, go to /config
-  There are some extra configurations for the mock accounts, go to /mock/config
+  There are some extra configurations for the mock accounts, go to /mock/logs
 
 ## Pre-Analysis
 - Folder 'notebooks' contains data manipulations and some tests for strategies before implementation
+
+## Continuous Integration
+
+Every push and pull request triggers a GitHub Actions workflow that:
+
+1. Builds the Docker image via the **builder** service  
+2. Runs the smoke‑test suite inside the container
+
+A green badge (above) indicates all tests are passing.
 
 ## Future Developments
 - For planned enhancements and feature requests, refer to the `doc/Future developments.md` file.
@@ -96,3 +112,83 @@ graph TD
 
     %% Trade Execution Loop
     F -->|Executes trades in real-time| A```
+
+### Adding your own strategy (≈ 10 lines)
+
+```python
+# Example of adding a new strategy class
+class MyStrategy:
+    def __init__(self, params):
+        self.params = params
+
+    def predict(self, data):
+        # implement prediction logic here
+        pass
+
+    def decide(self, scores):
+        # implement decision logic here
+        pass
+
+    def manage_risk(self, trades):
+        # implement risk management here
+        pass
+```
+
+### Building a custom trading pipeline
+
+A *strategy* in **Tradebot v3** is a **pipeline of three plug‑ins**:
+
+| Stage | Loader helper | Purpose | Example class |
+|-------|---------------|---------|---------------|
+| **Model** | `core.model.get()` | Generate raw buy/sell scores | `MACDwADX, RSIwADX` |
+| **Decision‑maker** | `core.decision.get()` | Transform scores → discrete signals | `ThresholdMode1` |
+| **Risk‑manager** | `core.risk.get()` | Size, stop‑loss, take‑profit | `ATRStopLoss`, `RiskReward` |
+
+Configure each symbol in `config/strategy.json`:
+
+```jsonc
+{
+  "BTCUSDT": {
+    "model": {
+      "method":  "MACDwADX",
+      "params":  { "rsi_var_window": 23, "adx_threshold": 20 }
+    },
+    "decision_maker": {
+      "method": "ThresholdMode1",
+      "params": { "threshold": 0.002 }
+    },
+    "risk_manager": {
+      "stop_method":      "atr",
+      "take_method":      "risk_reward",
+      "position_method":  "none",
+      "stop_params":      { "atr_window": 14, "para1": 0.05 },
+      "take_params":      { "risk_reward_ratio": 4 },
+      "position_params":  { "fixed_fraction": 1.0 }
+    }
+  }
+}
+```
+
+Drop‑in rules for **any** plug‑in stage:
+
+```python
+# src/model/model.py
+class MyCoolModel:
+
+    def predict(self, df): ...
+
+# src/decision/threshold_mode2.py
+class ThresholdMode2:
+
+    def decide(self, scores): ...
+
+```
+
+After adding a file and committing, simply rebuild the Docker image:
+
+```bash
+docker compose build builder
+```
+
+The loader auto‑registers your new classes—no core code changes needed.
+*Currently available baseline models: `MACDModel`, `MACDwADX`, `RSIwADX`, `ForTesting`.  More advanced models will be added in the next release.*
