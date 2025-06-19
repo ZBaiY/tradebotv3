@@ -188,8 +188,3 @@ docker compose build builder
 
 The loader auto‑registers your new classes—no core code changes needed.
 *Currently available baseline models: `MACDModel`, `MACDwADX`, `RSIwADX`, `ForTesting`.  More advanced models will be added in the next release.*
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).  
-Feel free to use or adapt for personal or commercial purposes with proper attribution.
