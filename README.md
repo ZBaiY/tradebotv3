@@ -114,28 +114,7 @@ graph TD
     F -->|Executes trades in real-time| A
 ```
 
-### Adding your own strategy (≈ 10 lines)
-
-```python
-# Example of adding a new strategy class
-class MyStrategy:
-    def __init__(self, params):
-        self.params = params
-
-    def predict(self, data):
-        # implement prediction logic here
-        pass
-
-    def decide(self, scores):
-        # implement decision logic here
-        pass
-
-    def manage_risk(self, trades):
-        # implement risk management here
-        pass
-```
-
-### Building a custom trading pipeline
+### Adding your own strategy (≈ 10 lines, modify in config/strategy)
 
 A *strategy* in **Tradebot v3** is a **pipeline of three plug‑ins**:
 
