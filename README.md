@@ -111,7 +111,8 @@ graph TD
     E -->|Generates buy/sell signals| F
 
     %% Trade Execution Loop
-    F -->|Executes trades in real-time| A```
+    F -->|Executes trades in real-time| A
+```
 
 ### Adding your own strategy (≈ 10 lines)
 
