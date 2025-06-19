@@ -1,12 +1,20 @@
-version: "3.9"
 
 services:
+  # -----------------------------------------------------------------
+  # Image builder (creates tradebot-v3:dev, runs no workload)
+  # -----------------------------------------------------------------
+  builder:
+    build:
+      context: .
+    image: tradebot-v3:dev
+    command: ["true"]          # do nothing; just build the image
+    profiles: ["build"]        # not started unless explicitly requested
+
   # -----------------------------------------------------------------
   # Back-test service
   # -----------------------------------------------------------------
   backtester:
-    build: .
-    image: tradebot-backtester:dev
+    image: tradebot-v3:dev
     command: ["python", "scripts/backtest_v1.py"]
     tty: true          # allocate a pseudo-TTY
     stdin_open: true   # (optional) keep STDIN open for interaction
@@ -20,7 +28,7 @@ services:
   # Mock-trading service
   # -----------------------------------------------------------------
   mocktrader:
-    image: tradebot-backtester:dev      # re-use the same image
+    image: tradebot-v3:dev      # re-use the same image
     command: ["python", "scripts/mock_trade.py"]
     tty: true          # allocate a pseudo-TTY
     stdin_open: true   # keep STDIN open for interaction
@@ -37,7 +45,7 @@ services:
   # Historical data fetch service
   # -----------------------------------------------------------------
   fetcher:
-    image: tradebot-backtester:dev      # reuse the same Python image
+    image: tradebot-v3:dev      # reuse the same Python image
     command: ["python", "scripts/fetch_data.py"]
     tty: true          # allocate a pseudo‑TTY for tqdm progress bars
     stdin_open: true   # keep STDIN open for interaction

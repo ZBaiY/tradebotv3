@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]      # change if your default branch is different
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image via builder service
+        run: docker compose build builder
+
+      - name: Run smoke-tests
+        run: docker compose run --rm backtester pytest -q

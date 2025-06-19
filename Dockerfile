@@ -12,6 +12,7 @@ RUN pip install --upgrade pip && \
 
 # ---- Source code --------------------------------------------------
 COPY . .
-
+# ---- Run smoke-tests --------------------------------------------------------
+RUN pytest -q tests
 # ---- Default command ---------------------------------------------
-CMD ["python", "scripts/backtest_v1.py"]
+CMD ["python", "scripts/backtest_v1.py", "--help"]
