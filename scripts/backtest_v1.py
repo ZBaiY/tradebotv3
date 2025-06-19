@@ -7,6 +7,20 @@ import pandas as pd
 
 
 from src.backtesting.backtester import SingleAssetBacktester, MultiAssetBacktester
+
+
+# -----------------------------------------------------------------------------  
+# Public entry point for programmatic use (e.g. pytest, notebooks, other scripts)
+# -----------------------------------------------------------------------------
+def main(symbol: str = "BTCUSDT"):
+
+    backtester = SingleAssetBacktester()
+    backtester.run_initialization()
+    backtester.run_backtest()
+    return backtester
+
+
+
 """
 if __name__ == '__main__':
     backtester = MultiAssetBacktester()

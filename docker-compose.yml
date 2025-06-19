@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  # -----------------------------------------------------------------
+  # Back-test service
+  # -----------------------------------------------------------------
+  backtester:
+    build: .
+    image: tradebot-backtester:dev
+    command: ["python", "scripts/backtest_v1.py"]
+    tty: true          # allocate a pseudo-TTY
+    stdin_open: true   # (optional) keep STDIN open for interaction
+    volumes:
+      - ./data:/app/data                 # data files
+      - ./backtest/performance/model:/app/backtest/performance/model
+      - ./backtest/performance/strategy:/app/backtest/performance/strategy
+      - ./trade/logs:/app/trade/logs         # live‑trade logs (if any)
+
+  # -----------------------------------------------------------------
+  # Mock-trading service
+  # -----------------------------------------------------------------
+  mocktrader:
+    image: tradebot-backtester:dev      # re-use the same image
+    command: ["python", "scripts/mock_trade.py"]
+    tty: true          # allocate a pseudo-TTY
+    stdin_open: true   # keep STDIN open for interaction
+    environment:
+      - TRADING_MODE=mock              # optional flag if your code checks it
+    volumes:
+      - ./data:/app/data                         # data files
+      # bind individual JSON configs (read‑only)
+      - ./mock/config/mock_account.json:/app/mock/config/mock_account.json:ro
+      - ./mock/config/mock_orders.json:/app/mock/config/mock_orders.json:ro
+      - ./mock/config/mock_past_trades.json:/app/mock/config/mock_past_trades.json:ro
+
+  # -----------------------------------------------------------------
+  # Historical data fetch service
+  # -----------------------------------------------------------------
+  fetcher:
+    image: tradebot-backtester:dev      # reuse the same Python image
+    command: ["python", "scripts/fetch_data.py"]
+    tty: true          # allocate a pseudo‑TTY for tqdm progress bars
+    stdin_open: true   # keep STDIN open for interaction
+    volumes:
+      - ./data:/app/data               # fetched CSVs land in ./data
+      

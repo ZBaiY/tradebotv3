@@ -1,1 +1,16 @@
-python-binace
+python-binance
+pandas
+numpy
+matplotlib
+tqdm
+requests
+pytz
+joblib
+scikit-learn
+psutil
+python-binance
+ta
+
+
+# --- dev ---
+pytest

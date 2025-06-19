@@ -24,33 +24,32 @@ Tradebot v3 is a multi-symbol crypto trading bot that automates data collection,
   ```
 
 ### Running the Code
-- **Backtesting:**  
-  Execute the backtesting module:
-  ```bash
-  python scripts/backtest_v1.py
-  ```
-  Backtest results will be stored in /backtest/performance
 
-- **Data Fetching:**  
-  Run the data fetching script:
-  ```bash
-  python scripts/fetch_data.py
-  ```
-  Data will be stored in /data
+| Mode | Local (Python) | Docker |
+|------|----------------|--------|
+| **Back-test** | `python scripts/backtest_v1.py` | `docker compose up backtester` |
+| **Mock trade** | `python scripts/mock_trade.py` | `docker compose up mocktrader` |
+| **Fetch data** | `python scripts/fetch_data.py` | `docker compose up fetcher` |
 
-- **Live/Mock Trading:**  
-  For simulated trading, run:
-  ```bash
-  python scripts/mock_trade.py
-  ```
-  You can check the mock trade logs and the mock account in /mock
+_Back-test results are written to `/backtest/performance`, mock-trade logs to `/mock/logs`, fetched raw data to `/data`._
+
+### Progress-bar behaviour in Docker
+
+When you launch services with `docker compose up`, the `tqdm` progress bar  
+doesn’t have access to a real TTY, so each refresh prints on a new line.  
+You have two options:
+
+| Goal | Command |
+|------|---------|
+| **Clean, single‑line bar** | `docker compose run --rm --tty backtester` |
+| **Quiet logs (no bar)** | `TQDM_DISABLE=1 docker compose up backtester` |
+
+In standard local runs (`python scripts/backtest_v1.pNo source‑code changes are required.
 
 - **Customize the configurations**
-  For Backtest, go to: /backtest/cofig
-  For Live/Mock Trading, go to /cofig
+  For Backtest, go to: /backtest/config
+  For Live/Mock Trading, go to /config
   There are some extra configurations for the mock accounts, go to /mock/config
-
-
 
 ## Pre-Analysis
 - Folder 'notebooks' contains data manipulations and some tests for strategies before implementation
@@ -96,4 +95,4 @@ graph TD
     E -->|Generates buy/sell signals| F
 
     %% Trade Execution Loop
-    F -->|Executes trades in real-time| A
+    F -->|Executes trades in real-time| A```

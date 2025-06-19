@@ -8,8 +8,16 @@ import pandas as pd
 
 from src.mock_trading.mock_real_time_dealer import MockRealtimeDealer
 
-if __name__ == '__main__':
+# -----------------------------------------------------------------------------  
+# Public entry point for programmatic use (e.g. pytest, notebooks, other scripts)
+# -----------------------------------------------------------------------------
+def main():
+
     trader = MockRealtimeDealer()
-    # trader.run_initialization()
     trader.reset_config()
+    # trader.run_initialization()
     trader.start()
+    return trader
+
+if __name__ == "__main__":
+    main()

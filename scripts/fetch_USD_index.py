@@ -135,12 +135,53 @@ def clean_df(df: pd.DataFrame) -> pd.DataFrame:
     df["open_time"] = pd.to_datetime(df["open_time"], format="%m/%d/%Y")
     df["open_time"] = df["open_time"].dt.strftime("%Y-%m-%d 00:00:00+00:00")
 
+
     # Sort in ascending time (optional, but good practice)
     df = df.sort_values("open_time").reset_index(drop=True)
 
     return df
 
+def clean_ndx_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Cleans NDX dataframe into: open_time, open, high, low, close, volume, change%
+    Handles commas in numbers and converts volume from M/B suffixes to floats.
+    """
+    # Rename columns
+    df = df.rename(columns={
+        "Date": "open_time",
+        "Open": "open",
+        "High": "high",
+        "Low": "low",
+        "Price": "close",
+        "Vol.": "volume",
+        "Change %": "change%"
+    })
 
+    # Convert date format to UTC
+    df["open_time"] = pd.to_datetime(df["open_time"], format="%m/%d/%Y")
+    df["open_time"] = df["open_time"].dt.strftime("%Y-%m-%d 00:00:00+00:00")
+
+    # Remove commas from all relevant columns
+    for col in ["open", "high", "low", "close"]:
+        df[col] = df[col].astype(str).str.replace(",", "").astype(float)
+
+    # Clean volume: e.g. "331.51M" → 331510000.0
+    df["volume"] = (
+        df["volume"]
+        .astype(str)
+        .str.replace(",", "")
+        .str.replace("M", "e6", regex=False)
+        .str.replace("B", "e9", regex=False)
+        .apply(pd.to_numeric, errors="coerce")
+    )
+
+    # Reorder columns
+    df = df[["open_time", "open", "high", "low", "close", "volume", "change%"]]
+
+    # Sort chronologically
+    df = df.sort_values("open_time").reset_index(drop=True)
+
+    return df
 
 if __name__ == "__main__":
     # dxy_historical = fetch_historical_data(symbol, start_date, end_date)
@@ -148,6 +189,7 @@ if __name__ == "__main__":
     # if not dxy_historical.empty:
     #     dxy_historical.to_csv(os.path.join('data/historical/external', 'USD_data.csv'), index=True)
     #     print("Historical data saved to dxy_historical_2022_to_now.csv")
-    dxy_historical = pd.read_csv(os.path.join('data/historical/external', 'DXY_2022-01-01_2025-04-04.csv'))
-    cleaned_df = clean_df(dxy_historical)
-    cleaned_df.to_csv(os.path.join('data/historical/external', 'DXY_2022-01-01_2025-04-04_cleaned.csv'), index=False)
+    dxy_historical = pd.read_csv(os.path.join('data/historical/external', 'NDX_2022-01-01_2025-04-04_1d.csv'))
+    
+    cleaned_df = clean_ndx_df(dxy_historical)
+    cleaned_df.to_csv(os.path.join('data/historical/external', 'NDX_2022-01-01_2025-04-04_cleaned.csv'), index=False)
