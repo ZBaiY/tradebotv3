@@ -12,6 +12,11 @@ Event-driven crypto trading bot
 | Docker-based setup | Supported |
 | CI testing with GitHub Actions | Supported |
 
+## Example Reports
+
+- [Strategy Report – March 2025 (PDF)](./reports/StrategyReportMar_2025.pdf)
+- [Structure Report – March 2025 (PDF)](./reports/StructureReportMar_2025.pdf)
+
 ## Overview
 The most exciting version, with real time operations
 Scalers are refreshed weekly to keep feature distributions up to date.
@@ -71,11 +76,6 @@ In standard local runs (`python scripts/backtest_v1.py`), progress bars behave n
 
 ## Pre-Analysis
 - Folder 'notebooks' contains data manipulations and some tests for strategies before implementation
-
-## Example Reports
-
-- [Strategy Report – March 2025 (PDF)](./reports/StrategyReportMar_2025.pdf)
-- [Structure Report – March 2025 (PDF)](./reports/StructureReportMar_2025.pdf)
 
 ## Continuous Integration
 
