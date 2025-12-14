@@ -1,4 +1,5 @@
-# Tradebot v3
+Legacy version (v3). Superseded by Quant Engine v4. Kept for historical reference only.
+# Tradebot v3-final
 ![CI](https://github.com/ZBaiY/tradebotv3/actions/workflows/ci.yml/badge.svg)
 
 Event-driven crypto trading bot
